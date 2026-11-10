@@ -607,22 +607,33 @@ export class Player {
   /** Meshy's rig has no fingers and hand rotations vary per clip, so outside of attacks the weapon is
    *  aimed from the forearm (blade forward and up, like a guard); during attacks the animated hand drives it. */
   _grip(dt) {
+    // The Meshy rig has no fingers and every clip twists the hand bone differently, which left the
+    // weapons crooked. Their pose is now computed only from the forearm: the grip sits on the fist,
+    // claws continue the forearm, and blades leave the fist at a fixed angle (raised in guard, forward
+    // while swinging), so they always look held.
     if (!this.meshyWeapons) return;
-    this.gripW = THREE.MathUtils.damp(this.gripW ?? 0, this.state === 'attack' ? 1 : 0, this.state === 'attack' ? 18 : 7, dt || 1);
+    this.gripW = THREE.MathUtils.damp(this.gripW ?? 0, this.state === 'attack' || this.state === 'skill' ? 1 : 0, 12, dt || 1);
     this.root.updateMatrixWorld(true);
-    const fwd = _v.set(Math.sin(this.facing), 0, Math.cos(this.facing));
-    for (const g of [this.wKatana[0], this.wHammer[0]]) {
-      if (!g.userData.q0) g.userData.q0 = g.quaternion.clone();
+    const fwd = new V(Math.sin(this.facing), 0, Math.cos(this.facing)), up = new V(0, 1, 0);
+    const place = (g, yAxis, along) => {
       const bone = g.parent, fore = bone.parent;
-      const f = bone.getWorldPosition(new V()).sub(fore.getWorldPosition(new V())).normalize();
-      const ref = fwd.clone().multiplyScalar(g === this.wHammer[0] ? .55 : 1).add(new V(0, g === this.wHammer[0] ? 1 : .55, 0)).normalize();
-      const b = ref.addScaledVector(f, -ref.dot(f));
-      if (b.lengthSq() < 1e-4) b.set(0, 1, 0);
-      b.normalize();
-      const qWorld = new Q().setFromUnitVectors(new V(0, 1, 0), b);
-      const qLocal = bone.getWorldQuaternion(new Q()).invert().multiply(qWorld);
-      g.quaternion.copy(qLocal).slerp(g.userData.q0, this.gripW);
-    }
+      const hand = bone.getWorldPosition(new V()), f = hand.clone().sub(fore.getWorldPosition(new V())).normalize();
+      const Y = yAxis(f).normalize();
+      let X = new V().crossVectors(Y, f); if (X.lengthSq() < 1e-4) X.crossVectors(Y, up); if (X.lengthSq() < 1e-4) X.set(1, 0, 0); X.normalize();
+      const Z = new V().crossVectors(X, Y).normalize();
+      const qWorld = new Q().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+      g.quaternion.copy(bone.getWorldQuaternion(new Q()).invert().multiply(qWorld));
+      g.position.copy(bone.worldToLocal(hand.addScaledVector(f, along)));
+    };
+    const blade = (lift, lean) => f => {
+      const guard = fwd.clone().multiplyScalar(.55).addScaledVector(up, lift), swing = fwd.clone().addScaledVector(up, .25);
+      const ref = guard.lerp(swing, this.gripW).normalize();
+      const perp = ref.addScaledVector(f, -ref.dot(f)); if (perp.lengthSq() < 1e-4) perp.copy(up);
+      return perp.normalize().multiplyScalar(Math.cos(lean)).addScaledVector(f, Math.sin(lean));
+    };
+    place(this.wKatana[0], blade(1, .45), .04);
+    place(this.wHammer[0], blade(1.3, .3), .04);
+    for (const c of this.wClaws) place(c, f => f.clone(), -.05);
   }
 
   /** Combo power 0..1 drives weapon glow, aura particles, trail size and hit effects. */

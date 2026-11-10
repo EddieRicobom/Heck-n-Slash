@@ -775,6 +775,12 @@ class Game {
       amb = this.mode === 'world' ? (this.overworld?.region || 'grove') : 'arena';
       if (A.music) A.music.variant = this.mode === 'world' ? (this.overworld?.region || 'grove') : 'arena';
     }
+    // style meter -> music layers: rise quickly with the rank, drain gradually once the combo drops
+    if (A.music) {
+      const target = this.state === 'play' && this.combo > 0 ? Math.min(5, this.rankIndex() + 1 + Math.min(1, this.combo / 12)) : 0;
+      const L = A.music.level;
+      A.music.level = target > L ? Math.min(target, L + dt * 2.2) : Math.max(target, L - dt * .32);
+    }
     A.setTrack(track); A.setAmbience(amb); A.ambienceTick(dt);
   }
 

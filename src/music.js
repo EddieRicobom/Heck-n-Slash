@@ -32,7 +32,7 @@ const TRACKS = {
     ],
   },
   combat: {
-    bpm: 142, swing: 0, lead: 'saw', arp: 'pulse', drums: 'rock', pad: .5,
+    bpm: 172, swing: 0, lead: 'saw', arp: 'shred', drums: 'punk', pad: .3, guitar: true,
     chords: [[50, MIN], [50, MIN], [46, MAJ], [48, MAJ], [50, MIN], [50, MIN], [43, MIN], [45, MAJ]],
     melody: [
       [[0, 62, 2], [2, 62, 2], [4, 69, 2], [6, 62, 2], [8, 67, 2], [10, 62, 2], [12, 65, 2], [14, 64, 2]],
@@ -46,7 +46,7 @@ const TRACKS = {
     ],
   },
   boss: {
-    bpm: 152, swing: 0, lead: 'saw', arp: 'pulse', drums: 'war', pad: 1, choir: true,
+    bpm: 160, swing: 0, lead: 'saw', arp: 'shred', drums: 'war', pad: .8, choir: true, guitar: true, minLevel: 2,
     chords: [[48, MIN], [44, MAJ], [41, MIN], [43, MAJ]],
     melody: [
       [[0, 72, 4], [4, 75, 4], [8, 79, 6], [14, 78, 2]],
@@ -77,7 +77,10 @@ export class Music {
     verb.buffer = b; this.send = ctx.createGain(); this.send.gain.value = .35; this.send.connect(verb); verb.connect(this.out);
     const len = ctx.sampleRate; this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    this.track = null; this.want = null; this.step = 0; this.next = 0; this.intensity = 0; this.variant = 'grove';
+    this.track = null; this.want = null; this.step = 0; this.next = 0; this.intensity = 0; this.variant = 'grove'; this.level = 0;
+    this.shaper = ctx.createWaveShaper(); const n2 = 2048, cv = new Float32Array(n2); for (let i = 0; i < n2; i++) { const x = i * 2 / n2 - 1; cv[i] = Math.tanh(x * 14) * .9; } this.shaper.curve = cv; this.shaper.oversample = '2x';
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 90; const cab = ctx.createBiquadFilter(); cab.type = 'lowpass'; cab.frequency.value = 3400; cab.Q.value = .8; const mid = ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 900; mid.gain.value = 4;
+    this.amp = ctx.createGain(); this.amp.gain.value = .2; this.shaper.connect(hp); hp.connect(mid); mid.connect(cab); cab.connect(this.amp); this.amp.connect(this.bus); const as = ctx.createGain(); as.gain.value = .15; this.amp.connect(as); as.connect(this.send);
     this.timer = setInterval(() => this._tick(), 40);
   }
 
@@ -120,24 +123,39 @@ export class Music {
     // bass
     const bassPat = T.drums === 'rock' || T.drums === 'war' ? [0, 3, 6, 8, 10, 11, 14] : [0, 8, 11];
     if (bassPat.includes(s)) this.bass(mtof(root - 12 + (s === 11 && T.drums === 'soft' ? 7 : 0)), sp * (T.drums === 'soft' ? 6 : 1.6), cut);
+    // combo-reactive layers: each one fades in with the style meter and out as it drains
+    const L = Math.max(this.level, T.minLevel || 0), lay = k => Math.max(0, Math.min(1, L - k + 1));
+    if (T.guitar) {
+      const five = [0, 7, 12];
+      if (lay(1) > 0 && s % 2 === 0) this.guitar(root - 12, five, sp * .9, .55 * lay(1), true);            // palm-muted chugs
+      if (lay(2) > 0 && (s === 0 || s === 6 || s === 12)) this.guitar(root - 12, five, sp * (s === 12 ? 3.6 : 5.5), .8 * lay(2), false); // open power chords
+      if (lay(5) > 0 && s === 0) this.crash(t, .35 * lay(5));
+    }
     // arpeggio
-    if (T.arp && s % 2 === 0 && (T.drums !== 'none' || s % 4 === 0)) {
+    if (T.arp === 'shred') { if (lay(5) > 0) { const notes = [0, 3, 7, 12, 15, 19, 24, 19], k = notes[(s + bar * 3) % 8]; this.lead(mtof(root + 24 + k), sp * .9, 3000, .022 * lay(5)); } }
+    else if (T.arp && s % 2 === 0 && (T.drums !== 'none' || s % 4 === 0)) {
       const notes = [...iv, 12, iv[1] + 12, 7 + 12], k = notes[(s / 2 + bar) % notes.length];
       const m = root + 24 + k + (this.variant === 'crystal' || this.variant === 'highlands' ? 12 : 0);
       if (T.arp === 'pluck' || T.arp === 'music') this.pluck(mtof(m), T.arp === 'music' ? .7 : .35, T.arp === 'music' ? .03 : .026 + I * .015);
       else if (I > .1 || this.trackName === 'boss') this.pulse(mtof(m), sp * 1.6, .016 + I * .02, cut);
     }
-    // melody
+    // melody (in reactive tracks the lead only joins at higher style ranks, plus a harmony line a third up)
     for (const [st, m, len] of T.melody[bar]) if (st === s) {
       const mm = m + (dark ? -12 : 0);
       if (T.lead === 'bell' || this.variant === 'crystal') this.bell(mtof(mm), sp * len);
       else if (T.lead === 'flute') this.flute(mtof(mm), sp * len);
-      else this.lead(mtof(mm), sp * len, cut);
+      else if (!T.guitar) this.lead(mtof(mm), sp * len, cut);
+      else { if (lay(3) > 0) this.lead(mtof(mm), sp * len, 3200, .05 * lay(3)); if (lay(4) > 0) this.lead(mtof(mm + 4), sp * len, 2600, .03 * lay(4)); }
     }
     // drums
     const D = T.drums;
     if (D === 'soft') { if (s === 0 || s === 10) this.kick(t, .5); if (s === 8) this.snare(t, .18); if (s % 4 === 2) this.hat(t, .05); }
     if (D === 'rock') { if (s % 8 === 0 || s === 11) this.kick(t, .9); if (s === 4 || s === 12) this.snare(t, .5); if (s % 2 === 1 || I > .5) this.hat(t, .07 + I * .05); if (s === 15 && bar % 4 === 3) { this.tom(t, 180); this.tom(t + sp, 120); } }
+    if (D === 'punk') { // driving punk beat; hats and fills arrive with the meter
+      if (s % 4 === 0 || s === 10) this.kick(t, .95); if (s === 4 || s === 12) this.snare(t, .55);
+      if (s % 2 === 0) this.hat(t, .05 + lay(1) * .04); if (lay(3) > 0 && s % 2 === 1) this.hat(t, .04 * lay(3));
+      if (lay(4) > 0 && s >= 12 && bar % 2 === 1) this.snare(t, .3 * lay(4));
+    }
     if (D === 'war') { if (s % 4 === 0 || s === 7) this.kick(t, 1); if (s === 4 || s === 12) this.snare(t, .6); if (s % 2 === 1) this.hat(t, .08); if (s === 6 || s === 14) this.tom(t, 90); }
   }
 
@@ -163,6 +181,15 @@ export class Music {
   }
   bass(f, dur, cut) { const t = this._t ?? this.next; this._osc('sawtooth', f, t, dur, .12, .005, Math.min(cut, 900), 5, 0, 0); this._osc('sine', f / 2, t, dur, .14, .005, 400, 1, 0, 0); }
   pluck(f, dur, v) { const t = this._t ?? this.next; this._osc('triangle', f, t, dur, v, .003, 4000, 1, 0, .5); this._osc('sine', f * 2, t, dur * .5, v * .4, .003, 6000, 1, 0, .5); }
+  /** distorted electric guitar: a power chord through a tanh amp and a cabinet filter */
+  guitar(rootMidi, ints, dur, v, palm) {
+    const c = this.c, t = this._t ?? this.next, g = c.createGain(), lp = c.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = palm ? 750 : 5000;
+    g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(v, t + .004); g.gain.exponentialRampToValueAtTime(.0001, t + dur + (palm ? .02 : .25));
+    for (const k of ints) for (const d of [-6, 6]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(rootMidi + 12 + k); o.detune.value = d; o.connect(lp); o.start(t); o.stop(t + dur + .3); }
+    lp.connect(g); g.connect(this.shaper);
+  }
+  crash(t, v) { const c = this.c, n = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(); n.buffer = this.noise; f.type = 'highpass'; f.frequency.value = 5200; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + 1.4); n.connect(f); f.connect(g); g.connect(this.bus); const s = c.createGain(); s.gain.value = .4; g.connect(s); s.connect(this.send); n.loop = true; n.start(t); n.stop(t + 1.5); }
   pulse(f, dur, v, cut) { const t = this._t ?? this.next; this._osc('square', f, t, dur, v, .004, cut, 2, 0, .3); }
   bell(f, dur) { const t = this._t ?? this.next; [[1, .05], [2.76, .018], [5.4, .008]].forEach(([k, v]) => this._osc('sine', f * k, t, Math.max(.4, dur * 1.3), v, .004, 9000, 1, 0, .7)); }
   flute(f, dur) {
@@ -171,9 +198,9 @@ export class Music {
     const n = c.createBufferSource(), nf = c.createBiquadFilter(), ng = c.createGain(); n.buffer = this.noise; nf.type = 'bandpass'; nf.frequency.value = f * 2; nf.Q.value = 3; this._env(ng, t, .03, .012, .12);
     n.connect(nf); nf.connect(ng); ng.connect(this.bus); n.start(t, Math.random(), .2);
   }
-  lead(f, dur, cut) {
-    const c = this.c, t = this._t ?? this.next, o = this._osc('square', f, t, Math.max(.12, dur * .9), .045, .01, Math.min(3200, cut + 800), 2, 0, .35);
-    this._osc('sawtooth', f, t, Math.max(.12, dur * .9), .03, .01, Math.min(3200, cut + 600), 2, 7, .35);
+  lead(f, dur, cut, v = .045) {
+    const c = this.c, t = this._t ?? this.next, o = this._osc('square', f, t, Math.max(.08, dur * .9), v, .01, Math.min(3200, cut + 800), 2, 0, .35);
+    this._osc('sawtooth', f, t, Math.max(.08, dur * .9), v * .66, .01, Math.min(3200, cut + 600), 2, 7, .35);
     const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = 6; lg.gain.value = f * .008; l.connect(lg); lg.connect(o.frequency); l.start(t + .1); l.stop(t + dur + .2);
   }
   kick(t, v) { const c = this.c, o = c.createOscillator(), g = c.createGain(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + .12); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + .2); o.connect(g); g.connect(this.bus); o.start(t); o.stop(t + .22); }

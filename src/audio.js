@@ -66,8 +66,39 @@ export class Audio2 {
     [1, 1.47, 2.09, 2.76, 3.9].forEach((r, i) => this._tone({ f0: base * r, f1: base * r * .995, dur: dur * (1 - i * .12), vol: vol / (1 + i * .6), type: i ? 'sine' : 'triangle', delay, verb: .45 }));
   }
 
+  // ---- rock kit: guitar stabs, slides, cymbals -------------------------------------------------
+  _gtrInit() {
+    if (this._gtr) return;
+    const c = this.ctx, sh = c.createWaveShaper(), n = 2048, cv = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = i * 2 / n - 1; cv[i] = Math.tanh(x * 18) * .85; }
+    sh.curve = cv; sh.oversample = '2x';
+    const cab = c.createBiquadFilter(); cab.type = 'lowpass'; cab.frequency.value = 3600; const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 100;
+    const out = c.createGain(); out.gain.value = .5; sh.connect(hp); hp.connect(cab); cab.connect(out); this._out(out, .25);
+    this._gtr = sh;
+  }
+  /** power chord stab; root as midi note, palm = muted chug, bend = semitones slid at the end */
+  gtr(root, dur = .25, vol = .3, palm = false, bend = 0, delay = 0) {
+    if (!this.ctx) return; this._gtrInit();
+    const c = this.ctx, t = c.currentTime + delay, lp = c.createBiquadFilter(), g = c.createGain();
+    lp.type = 'lowpass'; lp.frequency.value = palm ? 800 : 5200;
+    g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(vol, t + .004); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    for (const k of [0, 7, 12]) for (const d of [-7, 7]) {
+      const o = c.createOscillator(), f = 440 * Math.pow(2, (root + k - 69) / 12); o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t); o.detune.value = d;
+      if (bend) o.frequency.exponentialRampToValueAtTime(f * Math.pow(2, bend / 12), t + dur);
+      o.connect(lp); o.start(t); o.stop(t + dur + .05);
+    }
+    lp.connect(g); g.connect(this._gtr);
+  }
+  /** pick slide down the strings */
+  slide(vol = .2) { this._noise({ dur: .35, f0: 3400, f1: 500, q: 6, vol, verb: .3 }); this.gtr(52, .35, vol * .8, false, -12); }
+  crash(vol = .25, delay = 0) { this._noise({ dur: 1.3, type: 'highpass', f0: 6000, f1: 4500, vol, verb: .5, delay }); }
+  kickDrum(vol = .7, delay = 0) { this._tone({ f0: 150, f1: 42, dur: .18, vol, delay, verb: 0 }); }
+  snareDrum(vol = .35, delay = 0) { this._noise({ dur: .14, f0: 2200, f1: 1500, q: .8, vol, delay, verb: .3 }); this._tone({ f0: 200, f1: 160, dur: .07, vol: vol * .5, type: 'triangle', delay, verb: 0 }); }
+  squeal(f = 1800, delay = 0) { this._tone({ f0: f, f1: f * 1.06, dur: .45, vol: .05, type: 'square', delay, verb: .5, attack: .03 }); }
+
   // ---- player ------------------------------------------------------------------------------------
   swish(style, heavy) {
+    this._noise({ dur: .05, f0: 4500, f1: 2500, q: 5, vol: .05, verb: 0 }); // pick scrape
     const k = STYLE_TONE[style] || 1, d = heavy ? .28 : .16;
     this._noise({ dur: d, f0: 500 * k, f1: 5200 * k, q: 2.2, vol: heavy ? .32 : .22, attack: d * .45, verb: .1 });
     this._noise({ dur: d * .9, f0: 3800 * k, f1: 900 * k, q: 3, vol: .08, attack: d * .5, delay: .02, verb: 0 });
@@ -76,7 +107,8 @@ export class Audio2 {
   }
 
   hit(heavy, style, crit) {
-    const h = heavy ? 1 : 0;
+    const h = heavy ? 1 : 0, root = { claws: 52, katana: 57, hammer: 45 }[style] || 52;
+    if (heavy) { this.gtr(root, .32, .34); this.kickDrum(.6); this.crash(.12); } else { this.gtr(root + (Math.random() < .5 ? 0 : 3), .09, .2, true); this.snareDrum(.18); }
     this._noise({ dur: .03, type: 'highpass', f0: 3000, f1: 2000, vol: .4, verb: 0 }); // transient
     if (style === 'katana') {
       this._noise({ dur: .12 + h * .08, f0: 7000, f1: 2500, q: 1.5, vol: .3 + h * .15 });
@@ -91,26 +123,32 @@ export class Audio2 {
       this._tone({ f0: 210, f1: 70, dur: .1 + h * .12, vol: .4 + h * .25 });
     }
     if (heavy) this._noise({ dur: .45, type: 'lowpass', f0: 900, f1: 60, vol: .3, verb: .5 });
-    if (crit) { this._tone({ f0: 2093, f1: 2093, dur: .22, vol: .08, verb: .5 }); this._tone({ f0: 3136, f1: 3136, dur: .18, vol: .05, delay: .03, verb: .5 }); }
+    if (crit) { this.squeal(1760 + Math.random() * 400); this._tone({ f0: 2093, f1: 2093, dur: .22, vol: .08, verb: .5 }); this._tone({ f0: 3136, f1: 3136, dur: .18, vol: .05, delay: .03, verb: .5 }); }
   }
 
-  skillCast(style) { const k = { claws: 1.3, katana: 1, hammer: .6 }[style] || 1; this._tone({ f0: 200 * k, f1: 800 * k, dur: .35, vol: .12, type: 'sawtooth', verb: .5, attack: .08 }); this._noise({ dur: .4, f0: 600, f1: 5000, q: 1.2, vol: .14, attack: .15, verb: .4 }); }
-  jump() { this._noise({ dur: .22, f0: 400, f1: 1800, q: .9, vol: .16, attack: .03, verb: .1 }); this._tone({ f0: 220, f1: 440, dur: .12, vol: .05, type: 'triangle', verb: .2 }); }
+  skillCast(style) { const r = { claws: 52, katana: 57, hammer: 45 }[style] || 52; this.gtr(r, .6, .32, false, 0); this.gtr(r + 5, .5, .26, false, 0, .18); this.crash(.18, .18); this.squeal(1500, .25); const k = { claws: 1.3, katana: 1, hammer: .6 }[style] || 1; this._tone({ f0: 200 * k, f1: 800 * k, dur: .35, vol: .12, type: 'sawtooth', verb: .5, attack: .08 }); this._noise({ dur: .4, f0: 600, f1: 5000, q: 1.2, vol: .14, attack: .15, verb: .4 }); }
+  jump() { this._noise({ dur: .12, type: 'highpass', f0: 7000, f1: 6000, vol: .07, verb: 0 }); }
+  _jumpOld() { this._noise({ dur: .22, f0: 400, f1: 1800, q: .9, vol: .16, attack: .03, verb: .1 }); this._tone({ f0: 220, f1: 440, dur: .12, vol: .05, type: 'triangle', verb: .2 }); }
   bleed() { this._noise({ dur: .07, f0: 900, f1: 500, q: 6, vol: .06, verb: 0 }); }
-  dodge() { this._noise({ dur: .3, f0: 300, f1: 2600, q: .9, vol: .24, attack: .1, verb: .1 }); this._noise({ dur: .12, type: 'highpass', f0: 5000, f1: 7000, vol: .05, delay: .05, verb: 0 }); }
-  perfect() {
+  dodge() { this._noise({ dur: .25, type: 'highpass', f0: 3000, f1: 9000, vol: .12, attack: .2, verb: .2 }); this._dodgeOld(); }
+  _dodgeOld() { this._noise({ dur: .3, f0: 300, f1: 2600, q: .9, vol: .24, attack: .1, verb: .1 }); this._noise({ dur: .12, type: 'highpass', f0: 5000, f1: 7000, vol: .05, delay: .05, verb: 0 }); }
+  perfect() { this.squeal(2200); this.crash(.15); this._perfectOld(); }
+  _perfectOld() {
     this._noise({ dur: .55, type: 'bandpass', f0: 6000, f1: 300, q: 1, vol: .25, attack: .02, verb: .6 });
     [1046, 1568, 2093].forEach((f, i) => this._tone({ f0: f, f1: f, dur: .9, vol: .06, delay: i * .04, verb: .8 }));
   }
-  hurt() { this._tone({ f0: 330, f1: 90, dur: .28, vol: .45, type: 'sawtooth', verb: .1, dist: true }); this._noise({ dur: .18, type: 'lowpass', f0: 1800, f1: 200, vol: .45 }); }
+  hurt() { this.gtr(40, .4, .28, false, -5); this.snareDrum(.3); }
+  _hurtOld() { this._tone({ f0: 330, f1: 90, dur: .28, vol: .45, type: 'sawtooth', verb: .1, dist: true }); this._noise({ dur: .18, type: 'lowpass', f0: 1800, f1: 200, vol: .45 }); }
   shock() { this._tone({ f0: 95, f1: 26, dur: .65, vol: .9, verb: .4 }); this._noise({ dur: .55, type: 'lowpass', f0: 2200, f1: 70, vol: .6, verb: .45, dist: true }); this._noise({ dur: .35, f0: 500, f1: 4000, q: .8, vol: .12, delay: .05 }); }
   explode() { this._tone({ f0: 80, f1: 22, dur: .8, vol: 1, verb: .5 }); this._noise({ dur: .9, type: 'lowpass', f0: 4200, f1: 60, vol: .8, verb: .6, dist: true }); this._noise({ dur: .25, type: 'highpass', f0: 3000, f1: 1500, vol: .2 }); }
-  swap(style) {
+  swap(style) { const r = { claws: 52, katana: 57, hammer: 45 }[style] || 52; this.gtr(r - 5, .22, .22, false, 5); }
+  _swapOld(style) {
     const k = STYLE_TONE[style] || 1;
     this._noise({ dur: .14, f0: 1500 * k, f1: 6000 * k, q: 4, vol: .14, attack: .06 });
     this._metal(900 * k + 300, .4, .07, .07);
   }
-  rankUp(i) { [0, 4, 7, 12].forEach((s, k) => this._tone({ f0: 330 * Math.pow(2, (s + i * 2) / 12), f1: 330 * Math.pow(2, (s + i * 2) / 12), dur: .4, vol: .07, type: 'triangle', delay: k * .05, verb: .6 })); }
+  rankUp(i) { this.gtr(50 + i * 2, .45, .3); this.crash(.15); }
+  _rankOld(i) { [0, 4, 7, 12].forEach((s, k) => this._tone({ f0: 330 * Math.pow(2, (s + i * 2) / 12), f1: 330 * Math.pow(2, (s + i * 2) / 12), dur: .4, vol: .07, type: 'triangle', delay: k * .05, verb: .6 })); }
   soul() {
     const now = this.ctx?.currentTime || 0;
     this._soulStreak = now - this._soulT < .25 ? Math.min(this._soulStreak + 1, 14) : 0; this._soulT = now;
@@ -121,7 +159,8 @@ export class Audio2 {
   ui() { this._tone({ f0: 880, f1: 880, dur: .05, vol: .06, type: 'square', verb: 0 }); }
   confirm() { this._tone({ f0: 660, f1: 990, dur: .1, vol: .08, type: 'triangle', verb: .3 }); }
   card() { [392, 523, 659, 784].forEach((f, i) => this._tone({ f0: f, f1: f, dur: .35, vol: .1, delay: i * .07, type: 'triangle', verb: .6 })); }
-  fury() {
+  fury() { this.gtr(45, 1.6, .4); this.gtr(52, 1.4, .3, false, 0, .05); this.crash(.4); this.squeal(1760, .3); this._furyOld(); }
+  _furyOld() {
     this._tone({ f0: 60, f1: 700, dur: .9, vol: .45, type: 'sawtooth', dist: true, verb: .5 });
     this._noise({ dur: 1.1, f0: 200, f1: 8000, vol: .3, attack: .6, verb: .6 });
     [261, 392, 523, 784].forEach((f, i) => this._tone({ f0: f, f1: f, dur: 1.4, vol: .07, delay: .7 + i * .03, type: 'triangle', verb: .9 }));
@@ -188,10 +227,13 @@ export class Audio2 {
 
   // ---- extra one-shots -----------------------------------------------------------------------
   step(grass) { this._noise({ dur: .06, type: 'lowpass', f0: 600, f1: 200, vol: .06, verb: 0 }); if (grass) this._noise({ dur: .09, f0: 3500, f1: 2200, q: .9, vol: .025, verb: 0 }); }
-  land() { this._noise({ dur: .14, type: 'lowpass', f0: 900, f1: 120, vol: .22, verb: .1 }); this._tone({ f0: 110, f1: 50, dur: .12, vol: .2 }); }
-  killPop(big) { this._tone({ f0: big ? 520 : 760, f1: big ? 1560 : 1900, dur: .16, vol: .07, type: 'triangle', verb: .5 }); this._noise({ dur: .2, f0: 3000, f1: 800, q: 2, vol: .08, verb: .4 }); }
-  multiKill(n) { [0, 4, 7, 12, 16].slice(0, Math.min(5, n + 1)).forEach((s, i) => this._tone({ f0: 523 * Math.pow(2, s / 12), f1: 523 * Math.pow(2, s / 12), dur: .25, vol: .07, delay: i * .05, type: 'square', verb: .5 })); }
-  milestone() { this.music?.sting('milestone'); this._noise({ dur: .6, f0: 400, f1: 7000, vol: .12, attack: .2, verb: .6 }); }
+  land() { this.kickDrum(.5); this.snareDrum(.15, .02); }
+  _landOld() { this._noise({ dur: .14, type: 'lowpass', f0: 900, f1: 120, vol: .22, verb: .1 }); this._tone({ f0: 110, f1: 50, dur: .12, vol: .2 }); }
+  killPop(big) { this.slide(big ? .22 : .12); if (big) this.crash(.25); }
+  _killPopOld(big) { this._tone({ f0: big ? 520 : 760, f1: big ? 1560 : 1900, dur: .16, vol: .07, type: 'triangle', verb: .5 }); this._noise({ dur: .2, f0: 3000, f1: 800, q: 2, vol: .08, verb: .4 }); }
+  multiKill(n) { [0, 3, 5, 7, 10].slice(0, Math.min(5, n)).forEach((st, i) => this.gtr(52 + st, .16, .3, false, 0, i * .09)); this.crash(.2, Math.min(5, n) * .09); }
+  _multiOld(n) { [0, 4, 7, 12, 16].slice(0, Math.min(5, n + 1)).forEach((s, i) => this._tone({ f0: 523 * Math.pow(2, s / 12), f1: 523 * Math.pow(2, s / 12), dur: .25, vol: .07, delay: i * .05, type: 'square', verb: .5 })); }
+  milestone() { [45, 45, 48, 50].forEach((r, i) => this.gtr(r, i === 3 ? .7 : .12, .34, i < 3, 0, i * .12)); this.crash(.3, .36); this.squeal(1900, .4); this._noise({ dur: .6, f0: 400, f1: 7000, vol: .12, attack: .2, verb: .6 }); }
   chest() { this.music?.sting('chest'); this._noise({ dur: .3, type: 'lowpass', f0: 900, f1: 300, vol: .2 }); }
   coin() { const f = 1600 + Math.random() * 600; this._tone({ f0: f, f1: f, dur: .09, vol: .05, type: 'square', verb: .3 }); this._tone({ f0: f * 1.5, f1: f * 1.5, dur: .12, vol: .04, delay: .05, type: 'square', verb: .3 }); }
 }
