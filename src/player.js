@@ -319,10 +319,18 @@ export class Player {
       if (move.plunge) { lunge = Math.min(lunge, 1.5); this.lunge = lunge; this.vy = 4; g.speedLines(.35); }
     }
     if (move.dash) { g.speedLines(.3); this.ghosts(5); }
+    if (move.dash || (this.lunge || 0) > 2.2) this.burst(this.facing, move.dash ? 1.2 : .8);
     this.move = move; this.moveT = 0; this.hitIdx = 0; this.state = 'attack'; this.seq = move.cont ?? move.seq; this.dashHits = new Set();
     this.counter = this.counterT > 0 && (move.seq[0] === 'd'); this.counterT = 0;
     if (move.dash) this.iframe = Math.max(this.iframe, this.lungeEnd + .05);
-    this.playOnce(move.anim, move.from, move.to, move.dur / this.atkSpeed, move.fade ?? (move.seq === 'S' ? .16 : .06));
+    // pick the clip: counters get their own animation, some openers alternate between variants;
+    // the clip slice is shifted so its strike frame still lands on the move's hit time
+    let anim = move.anim, from = move.from, to = move.to;
+    const t0 = move.hits[0].t / move.dur, alt = this.counter ? { anim: 'Dodge_and_Counter', f: .28, span: .11 } : (move.alts && Math.random() < .5 ? move.alts[Math.random() * move.alts.length | 0] : null);
+    if (alt && this.clips[alt.anim]) { anim = alt.anim; from = Math.max(0, alt.f - alt.span * t0); to = from + alt.span; }
+    this.playOnce(anim, from, to, move.dur / this.atkSpeed, move.fade ?? (move.seq === 'S' ? .16 : .06));
+    for (const e of g.enemies.list) if (e.agile && e !== tgt?.e && e.pos.distanceTo(this.root.position) < 3.5 && Math.random() < .3) e.evade();
+    if (tgt?.e?.agile && Math.random() < .18) tgt.e.evade();
     g.audio.swish(this.style, move.hits[0].heavy);
     g.ui.moveName(this.counter ? `CONTRA-ATAQUE: ${move.name}` : move.name, move.seq === 'F' ? '#fff' : this.styleDef.css);
   }
@@ -347,7 +355,7 @@ export class Player {
       this.vy = pursuit ? 13.5 : 10; this.jumps = 1;
       this.pursuit = pursuit ? this.launchTarget : null;
       if (pursuit) { g.speedLines(.5); g.ui.moveName('PERSEGUIÇÃO', this.styleDef.css); }
-      this.playOnce('Basic_Jump', .25, .55, .45, .06);
+      if (Math.hypot(this.vel.x, this.vel.z) > 4 && this.clips.Jump_Run) this.playOnce('Jump_Run', .18, .48, .5, .06); else this.playOnce('Basic_Jump', .25, .55, .45, .06);
     } else if (this.jumps < 2) {
       this.vy = 9; this.jumps = 2; this.airUsed = false; this.airSeq = '';
       this.playOnce('Rightward_Spin', .1, .7, .45, .06);
@@ -356,6 +364,17 @@ export class Player {
     this.airborne = true; this.state = 'free'; this.comboGrace = 0;
     g.fx.dust(p.x, p.z, 6); g.audio.jump(); this.squash = -.16; this.ghosts(2);
     return true;
+  }
+
+  /** anime acceleration burst: dust plume, streaks flying backwards, camera punch and speed lines */
+  burst(dir, k = 1) {
+    const g = this.game, p = this.root.position, back = dir + Math.PI;
+    g.fx.dust(p.x, p.z, Math.round(10 * k));
+    g.fx.spray(p.x, this.y + .3, p.z, back, Math.round(12 * k), 0xd8ccef, 12 * k, .05);
+    g.fx.spray(p.x, this.y + 1, p.z, back, Math.round(8 * k), this.styleDef.color, 14 * k, .04);
+    g.fx.ring(p.x, p.z, 1.4 * k, 0xffffff, .2, this.y + .1);
+    g.fovKick = Math.max(g.fovKick || 0, 2.5 * k); g.speedLines(.18 * k);
+    this.squash = Math.min(this.squash || 0, -.08);
   }
 
   /** afterimages: frozen translucent copies of Eddie's current pose that fade out */
@@ -425,13 +444,16 @@ export class Player {
     if (this.dodgeCharge < 1) return false;
     this.dodgeCharge -= 1;
     const mv = this.game.input.moveVec();
-    this.dodgeDir = mv.lengthSq() > 0 ? Math.atan2(mv.x, mv.z) : this.facing;
-    this.facing = this.dodgeDir; this.root.rotation.y = this.facing;
+    this.sidestep = mv.lengthSq() === 0 && !this.airborne;
+    this.dodgeDir = mv.lengthSq() > 0 ? Math.atan2(mv.x, mv.z) : this.facing + (Math.random() < .5 ? 1.57 : -1.57);
+    if (!this.sidestep) { this.facing = this.dodgeDir; this.root.rotation.y = this.facing; }
     this.state = 'dodge'; this.t = 0; this.iframe = .34; this.ghostHit = new Set(); if (this.airborne) this.vy = 0;
     this.seq = ''; this.comboGrace = 0;
     const p = this.root.position; this.game.fx.dust(p.x, p.z, 8);
-    if (this.airborne) this.playOnce('Rightward_Spin', .1, .7, .42, .05); else this.playOnce('Roll_Dodge', .12, .62, .42, .04);
-    this.ghosts(4);
+    if (this.airborne) this.playOnce('Rightward_Spin', .1, .7, .42, .05);
+    else if (this.sidestep && this.clips.Stand_Dodge_1) { if (this.style === 'katana' && this.clips.Sword_Parry) this.playOnce('Sword_Parry', .05, .45, .42, .04); else this.playOnce(Math.random() < .5 ? 'Stand_Dodge_1' : 'Stand_Dodge_2', .1, .5, .42, .04); }
+    else this.playOnce('Roll_Dodge', .12, .62, .42, .04);
+    this.ghosts(4); this.burst(this.dodgeDir, 1);
     this.game.audio.dodge();
     return true;
   }
@@ -516,7 +538,7 @@ export class Player {
       p.x += this.vel.x * dt; p.z += this.vel.z * dt;
       if (moving && !this.airborne && (this.stepT = (this.stepT || 0) - dt) <= 0) { this.stepT = .27; g.fx.dust(p.x, p.z, 2); g.audio.step(g.mode === 'world'); }
       this.idleT = moving || this.airborne ? 0 : (this.idleT || 0) + dt;
-      if (this.idleT > 7 && g.state === 'play') { this.idleT = -12; this.playOnce('Chest_Pound_Taunt', .12, .62, 2.4, .2); }
+      if (this.idleT > 7 && g.state === 'play') { this.idleT = -12; if (Math.random() < .45 && this.clips.FunnyDancing_01) this.playOnce('FunnyDancing_01', .05, .4, 2.6, .25); else this.playOnce('Chest_Pound_Taunt', .12, .62, 2.4, .2); }
       if (this.comboGrace <= 0) this.seq = '';
       const b = inp.peek(.3);
       if (b === 'L' || b === 'H') {
@@ -531,7 +553,8 @@ export class Player {
       // before the strike lands, keep turning toward the aim when nothing is locked on
       if (!this.locked && this.hitIdx === 0) this.facing += angDiff(this.facing, inp.aimAngle(p, this.facing)) * Math.min(1, dt * 12);
       if (this.lunge > 0 && prev < this.lungeEnd) {
-        const step = (Math.min(this.moveT, this.lungeEnd) - prev) / this.lungeEnd * this.lunge;
+        const ease = x => 1 - Math.pow(1 - Math.min(1, x), 4);
+        const step = (ease(Math.min(this.moveT, this.lungeEnd) / this.lungeEnd) - ease(prev / this.lungeEnd)) * this.lunge;
         p.x += Math.sin(this.facing) * step; p.z += Math.cos(this.facing) * step;
         if (m.dash) for (const e of g.enemies.list) if (e.alive && Math.hypot(e.pos.x - p.x, e.pos.z - p.z) < e.r + 1.3) this.dashHits.add(e);
       }
@@ -554,7 +577,7 @@ export class Player {
       if (this.state === 'attack' && this.moveT >= m.dur) { this.state = 'free'; this.comboGrace = GRACE; this._endShots(); this.vel.set(0, 0, 0); }
     } else if (this.state === 'dodge') {
       this.t += dt;
-      const sp = this.t < .34 ? 15 : 3;
+      const sp = this.t < .34 ? 26 * Math.pow(1 - this.t / .34, 1.5) + 4 : 3;
       p.x += Math.sin(this.dodgeDir) * sp * dt; p.z += Math.cos(this.dodgeDir) * sp * dt;
       if (st.ghost) for (const e of g.enemies.list) {
         if (e.alive && !this.ghostHit.has(e) && e.pos.distanceTo(p) < e.r + .9) { this.ghostHit.add(e); g.damageEnemy(e, 12 * st.dmg, { bleed: 3, color: 0xb44dff }); }
@@ -579,7 +602,12 @@ export class Player {
     // squash & stretch plus a lean into turns and acceleration
     this.squash = THREE.MathUtils.damp(this.squash || 0, 0, 10, dt);
     const sq = this.squash, sp2 = Math.hypot(this.vel.x, this.vel.z);
-    this.model.scale.set(1 + sq * .5, 1 - sq, 1 + sq * .5);
+    const pv = this.root.position, lv = this._lastPos || (this._lastPos = pv.clone());
+    const spd = dt > 0 ? Math.hypot(pv.x - lv.x, pv.z - lv.z) / dt : 0; this._lastPos.copy(pv);
+    this.stretch = THREE.MathUtils.damp(this.stretch || 0, Math.min(.22, Math.max(0, spd - 9) * .018), 18, dt);
+    const st2 = this.stretch;
+    this.model.scale.set((1 + sq * .5) * (1 - st2 * .35), (1 - sq) * (1 - st2 * .2), (1 + sq * .5) * (1 + st2));
+    if (st2 > .05 && Math.random() < st2 * 3) { const b = this.facing + Math.PI; this.game.fx.spray(pv.x, this.y + .9 + Math.random() * .6, pv.z, b, 2, Math.random() < .5 ? 0xffffff : this.styleDef.color, 9, .04); }
     const turnRate = angDiff(this.root.rotation.y, this.facing) / Math.max(dt, 1e-3);
     this.leanZ = THREE.MathUtils.damp(this.leanZ || 0, THREE.MathUtils.clamp(-turnRate * .012, -.22, .22) * Math.min(1, sp2 / 5), 8, dt);
     this.leanX = THREE.MathUtils.damp(this.leanX || 0, this.state === 'free' && !this.airborne ? Math.min(.14, sp2 * .018) : 0, 6, dt);

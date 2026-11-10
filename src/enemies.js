@@ -57,7 +57,7 @@ export const TYPES = {
   wraith: { name: 'Espectro', hp: 72, speed: 4.4, dmg: 16, r: .6, range: 2.6, windup: .55, recover: .8, mass: 1, soul: 6, cd: 1.4, eye: 0x9fd6ff },
   boss1: { name: 'Gárgula de Obsidiana', hp: 1600, speed: 3.4, dmg: 24, r: 1.7, range: 4, windup: .9, recover: .9, mass: 30, soul: 120, cd: 1.1, poise: 260, boss: true, eye: 0xff4a3a },
   wolf: { name: 'Lobo de Cristal', hp: 40, speed: 6.4, dmg: 10, r: .6, range: 4.2, windup: .45, recover: .7, mass: .9, soul: 3, cd: 1.3, eye: 0x7ad8ff },
-  bat: { name: 'Morcego Sombrio', hp: 30, speed: 5.5, dmg: 9, r: .6, range: 7, windup: .55, recover: .9, mass: .6, soul: 3, cd: 1.6, eye: 0xff4a5e, fly: 2.2 },
+  bat: { name: 'Morcego Sombrio', hp: 30, speed: 5.5, dmg: 9, r: .6, range: 7, windup: .55, recover: .9, mass: .6, soul: 3, cd: 1.6, eye: 0xff4a5e, fly: 3.2 },
   shroom: { name: 'Cogumelo Tóxico', hp: 70, speed: 1.4, dmg: 12, r: .7, range: 3.2, windup: .9, recover: 1.2, mass: 1.8, soul: 4, cd: 2.2, eye: 0x9cff5a },
   golem: { name: 'Golem de Musgo', hp: 220, speed: 2.2, dmg: 26, r: 1.1, range: 2.8, windup: 1, recover: 1.1, mass: 4, soul: 10, cd: 1.8, poise: 110, eye: 0x7dff9a },
   shaman: { name: 'Xamã Ossudo', hp: 60, speed: 3, dmg: 11, r: .6, range: 13, keep: 9, windup: .8, recover: 1.2, mass: .9, soul: 6, cd: 2.2, eye: 0xb56bff },
@@ -183,6 +183,7 @@ export class Enemy {
     this.alive = true; this.state = 'spawn'; this.t = 0; this.cd = 1 + Math.random(); this.stun = 0; this.flash = 0;
     this.vel = new V(); this.vy = 0; this.y = 0; this.bleedT = 0; this.bleedDps = 0; this.bleedTick = 0; this.phase = Math.random() * 6;
     this.facing = Math.atan2(-x, -z); this.attack = null; this.dieT = 0;
+    this.slot = Math.random(); this.dodgeCd = 1; this.agile = ['wraith', 'archer', 'shaman', 'wolf'].includes(type) || (this.elite && !T.boss); this.canGuard = ['brute', 'golem'].includes(type);
     this.home = opts.home ? opts.home.clone() : null; this.camp = opts.camp || null; this.aggro = !opts.home; this.flyY = T.fly || 0;
     game.scene.add(this.root);
   }
@@ -217,9 +218,24 @@ export class Enemy {
   get dist() { const p = this.game.player.root.position; return Math.hypot(p.x - this.pos.x, p.z - this.pos.z); }
   get angleToPlayer() { const p = this.game.player.root.position; return Math.atan2(p.x - this.pos.x, p.z - this.pos.z); }
 
+  /** quick sidestep away from an incoming strike (agile enemies only) */
+  evade() {
+    if (!this.agile || this.dodgeCd > 0 || this.stun > 0 || this.y > 0 || this.state !== 'chase' || !this.aggro) return false;
+    const g = this.game, a = this.angleToPlayer + (Math.random() < .5 ? 1.6 : -1.6);
+    this.vel.x += Math.sin(a) * 13; this.vel.z += Math.cos(a) * 13; this.dodgeCd = 2.2 + Math.random() * 2;
+    g.fx.burst(this.pos.x, 1, this.pos.z, 8, this.eyeColor, 4, .07, .3, 0); g.audio.enemy('wraith', 'blink');
+    return true;
+  }
+
   hurt(dmg, o) {
     if (!this.alive) return false;
     const g = this.game;
+    if (this.guard && !o.heavy && !o.launch && !o.slam && o.fromMove && Math.abs(angDiff(this.facing, Math.atan2(g.player.root.position.x - this.pos.x, g.player.root.position.z - this.pos.z))) < 1.2) {
+      dmg *= .15; this.guardHits = (this.guardHits || 0) + 1;
+      g.fx.impact(this.pos.x, 1.4, this.pos.z, 1.3, 0x7fe9ff, .1); g.audio._metal(900, .25, .08);
+      if ((this._blockMsg = (this._blockMsg || 0) - 1) <= 0) { g.fx.number(this.pos.x, 2.8, this.pos.z, 'BLOQUEIO', false, '#7fe9ff'); this._blockMsg = 3; }
+      if (this.guardHits >= 5) { this.guard = false; this.guardHits = 0; this.stun = 1.2; g.ui.announceSmall('GUARDA QUEBRADA!'); g.audio.shock(); }
+    }
     this.hp -= dmg; this.flash = .07; this.hitPulse = 1; if (o.dir !== undefined) this.lastDir = o.dir;
     if (!this.aggro) this.alert();
     g.onDamage?.(dmg);
@@ -279,6 +295,8 @@ export class Enemy {
     }
     if (this.flash > 0) this.flash -= dt;
     this.hitPulse = Math.max(0, (this.hitPulse || 0) - dt * 5);
+    this.dodgeCd = Math.max(0, (this.dodgeCd || 0) - dt);
+    if (this.guard && Math.random() < dt * 10) g.fx.spark(this.pos.x + Math.sin(this.facing) * this.r, 1 + Math.random(), this.pos.z + Math.cos(this.facing) * this.r, 0, .5, 0, .3, .08, 0x7fe9ff, 0);
     if (this.phase2 && Math.random() < dt * 30) { const a = Math.random() * 6.28, r = this.r * 1.2; g.fx.spark(this.pos.x + Math.cos(a) * r, Math.random() * 3, this.pos.z + Math.sin(a) * r, 0, 3 + Math.random() * 3, 0, .6, .12, Math.random() < .5 ? 0xff3a2a : 0xffb347, -2); }
     if (this.elite && Math.random() < dt * 9) g.fx.spark(this.pos.x + (Math.random() - .5) * this.r * 2, .2 + Math.random() * 1.5 + (this.flyY || 0), this.pos.z + (Math.random() - .5) * this.r * 2, 0, 1.5, 0, .7, .07, 0xffc65c, -1);
     if (this.flash > 0) for (const m of this.mats) m.emissive.setRGB(.16, .1, .24);
@@ -352,12 +370,20 @@ export class Enemy {
     }
     if (this.state === 'chase') {
       this.facing += angDiff(this.facing, a) * Math.min(1, dt * 7);
-      let want = 1;
+      let want = 1, side = 0;
       if (T.keep) want = d > T.keep + 1.5 ? 1 : d < T.keep - 1.5 ? -1 : .25 * Math.sin(this.phase);
       else if (d < T.range * .7) want = 0;
-      speed = this.speed * (T.boss && this.hp < this.maxHp * .5 ? 1.25 : 1) * want;
-      this.pos.x += Math.sin(this.facing) * speed * dt; this.pos.z += Math.cos(this.facing) * speed * dt;
-      if (this.cd <= 0 && !g.player.dead && d < T.range + (T.boss ? 8 : 0)) this._startAttack(d);
+      // coordinated pack: only a few attack at once, the rest circle Eddie at their own slot
+      const busy = !T.boss && !T.keep && g.enemies.attackers >= 3 && d < 6;
+      if (busy) { want = d < 3.6 ? -.5 : d > 4.6 ? .6 : 0; side = this.slot > .5 ? 1 : -1; }
+      else if (!T.boss && !T.keep && d > 2.5 && d < 9) side = (this.slot - .5) * .9;
+      speed = this.speed * (T.boss && this.hp < this.maxHp * .5 ? 1.25 : 1);
+      const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
+      this.pos.x += (fx * want + fz * side) * speed * dt; this.pos.z += (fz * want - fx * side) * speed * dt;
+      speed *= Math.min(1, Math.abs(want) + Math.abs(side));
+      // guard: armored enemies raise their guard when Eddie is close and in front
+      if (this.canGuard) this.guard = d < 4 && this.cd > .2 && !this.stun;
+      if (!busy && this.cd <= 0 && !g.player.dead && d < T.range + (T.boss ? 8 : 0)) this._startAttack(d);
     } else if (this.state === 'windup') {
       this.t += dt;
       if (this.attack.track) this.facing += angDiff(this.facing, a) * Math.min(1, dt * 3);
@@ -652,6 +678,7 @@ export class Enemies {
 
   update(dt) {
     const L = this.list;
+    this.attackers = L.filter(e => e.alive && (e.state === 'windup' || e.state === 'active')).length;
     // separation
     for (let i = 0; i < L.length; i++) {
       const a = L[i]; if (!a.alive) continue;

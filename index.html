@@ -46,7 +46,7 @@
     <div class="tpRow"><span>Dano total</span><b id="tpTotal">0</b></div>
     <div class="tpRow"><span>Maior golpe</span><b id="tpMax">0</b></div>
     <div class="tpRow"><span>Tempo</span><b id="tpTime">0 s</b></div>
-    <div class="tpHint">R zera · T adiciona boneco · fúria infinita · todos os combos liberados</div>
+    <div class="tpHint">Backspace zera · T adiciona boneco · fúria infinita · todos os combos liberados</div>
   </div>
   <canvas id="minimap" class="hide" width="210" height="210"></canvas>
   <div id="moveName"></div>
@@ -65,12 +65,28 @@
       <button id="btnPlay">Arena</button>
       <button id="btnTrain">Treino</button>
       <button id="btnShop">Altar das Almas</button>
+      <button id="btnOpts">Opções</button>
       <button id="btnHow">Como jogar</button>
     </div>
     <div id="bestLine"></div>
   </div>
 </div>
 
+<div id="options" class="screen hide"><div class="panel wide">
+  <h2>Opções</h2>
+  <div class="optGrid">
+    <label>Volume geral<input type="range" id="optMaster" min="0" max="1" step=".05"></label>
+    <label>Música<input type="range" id="optMusic" min="0" max="1.4" step=".05"></label>
+    <label>Efeitos sonoros<input type="range" id="optSfx" min="0" max="1.4" step=".05"></label>
+    <label>Distância da câmera<input type="range" id="optCam" min=".7" max="1.5" step=".05"></label>
+    <label>Giro da câmera (controle)<input type="range" id="optSens" min=".4" max="2.2" step=".1"></label>
+    <label>Tremor de tela<input type="range" id="optShake" min="0" max="1.5" step=".1"></label>
+    <label>Qualidade gráfica<select id="optQuality"><option value="auto">Automática</option><option value="3">Alta</option><option value="2">Média</option><option value="1">Baixa</option><option value="0">Mínima</option></select></label>
+  </div>
+  <h3 style="margin:18px 0 8px">Teclas</h3>
+  <div id="keyList"></div>
+  <div class="menu row"><button id="btnKeysReset">Restaurar padrão</button><button id="btnOptsBack">Voltar</button></div>
+</div></div>
 <div id="how" class="screen hide"><div class="panel">
   <h2>Como jogar</h2>
   <div class="howGrid">
@@ -125,6 +141,7 @@
   <div id="runUpgrades"></div>
   <div class="menu row">
     <button id="btnResume">Continuar</button>
+    <button id="btnPauseOpts">Opções</button>
     <button id="btnQuit">Desistir</button>
   </div>
 </div></div>

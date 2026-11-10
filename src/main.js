@@ -5,9 +5,10 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { AnimeShader, toonify } from './toon.js';
+import { AnimeShader, toonify, fixNormals } from './toon.js';
 import { Overworld } from './overworld.js';
 import { Skills } from './skills.js';
+import { loadSettings, saveSettings, defaults as settingsDefaults } from './settings.js';
 import { WATER } from './terrain.js';
 import { STYLES, STYLE_ORDER, RANKS, RARITY, UPGRADES, SHOP, WAVES, FINAL_WAVE, endlessWave } from './data.js';
 import { createWorld, ARENA } from './world.js';
@@ -42,6 +43,7 @@ class Game {
     this.input = new Input(canvas, this.camera);
     this.ui = new UI(this);
     this.meta = loadMeta();
+    this.settings = loadSettings();
     this.bloomOn = true;
     this._composer();
     addEventListener('resize', () => this.resize()); this.resize();
@@ -49,7 +51,7 @@ class Game {
     const loader = new GLTFLoader();
     this.enemyAssets = {};
     const enemyLoads = Object.keys(MODEL).map(t => loader.loadAsync(`assets/enemies/${t}.glb`).then(g => {
-      let skinned = false; g.scene.traverse(o => { if (o.isSkinnedMesh) skinned = true; });
+      let skinned = false; g.scene.traverse(o => { if (o.isSkinnedMesh) skinned = true; }); this.normalsFixed = (this.normalsFixed || 0) + fixNormals(g.scene);
       this.enemyAssets[t] = { scene: g.scene, animations: stripRootMotion(g.animations), skinned };
     }).catch(err => console.warn('enemy model missing, using procedural', t, err)));
     const [gltf, anims] = await Promise.all([
@@ -57,11 +59,12 @@ class Game {
       fetch('assets/anims.json').then(x => { if (!x.ok) throw new Error('anims.json ' + x.status); return x.json(); }),
     ]);
     this.weaponAssets = {};
-    const weaponLoads = ['katana', 'hammer', 'claws'].map(w => loader.loadAsync(`assets/weapons/${w}.glb`).then(g => { this.weaponAssets[w] = g.scene; }).catch(err => console.warn('weapon model missing', w, err)));
+    const weaponLoads = ['katana', 'hammer', 'claws'].map(w => loader.loadAsync(`assets/weapons/${w}.glb`).then(g => { fixNormals(g.scene); this.weaponAssets[w] = g.scene; }).catch(err => console.warn('weapon model missing', w, err)));
     await Promise.all([...enemyLoads, ...weaponLoads]);
     if (this.enemyAssets.brute) { this.enemyAssets.dummy = this.enemyAssets.brute; MODEL.dummy = { ...MODEL.brute, scale: .85 }; }
     toonify(this.scene);
     this.stats = baseStats();
+    fixNormals(gltf.scene);
     this.player = new Player(this, gltf, buildClips(anims));
     this.skills = new Skills(this);
     this.mood = 0; this.moodTarget = 0;
@@ -73,6 +76,7 @@ class Game {
     this.camPos = new THREE.Vector3(0, 13, 11);
     this.camYaw = 0; this.camFocus = new THREE.Vector3(); this.camDist = 7.2; this.camH = 3.1;
     this._bind();
+    this.applySettings();
     this.toTitle();
     this.last = performance.now();
     this.fpsAcc = 0; this.fpsN = 0; this.lowFps = 0;
@@ -180,15 +184,18 @@ class Game {
     click('btnWorld', () => this.startWorld());
     click('btnShop', () => this.openShop());
     click('btnHow', () => this.ui.show('how'));
+    click('btnOpts', () => this.openOptions('title'));
+    click('btnPauseOpts', () => this.openOptions('pause'));
     click('btnResume', () => this.resume());
     click('btnQuit', () => this.training ? this.toTitle() : this.endRun(false));
     click('btnAgain', () => this.startRun());
     click('btnMenu', () => this.toTitle());
     click('btnEndless', () => { this.endless = true; this.ui.show(null); this.state = 'play'; this.offerCards(); });
-    this.input.onPress = (code) => {
+    this.input.onPress = (code, e, act) => {
       if (code.startsWith('Pad')) this.audio.init();
       if (code === 'PadConnected') this.ui.announceSmall('Controle conectado');
-      if (code === 'Escape' || code === 'KeyP' || code === 'Blur' || code === 'PadStart') {
+      if (code === 'Escape' || act === 'pause' || code === 'Blur' || code === 'PadStart') {
+        if (this.ui.current === 'options') { document.getElementById('btnOptsBack').click(); return; }
         if (this.state === 'play') this.pause(); else if (this.state === 'pause' && code !== 'Blur') this.resume();
       }
       if (this.state === 'play') {
@@ -200,12 +207,12 @@ class Game {
         if (code === 'PadRight') this.player.setStyle('hammer');
       } else if (code.startsWith('Pad')) this.ui.padNav(code, this.state);
       if (code === 'KeyM') this.audio.toggleMute();
-      if (this.training && this.state === 'play') { if (code === 'KeyR' || code === 'PadY' && false) this.resetDps(); if (code === 'KeyT') this.spawnDummy(); }
+      if (this.training && this.state === 'play') { if (code === 'Backspace') this.resetDps(); if (code === 'KeyT') this.spawnDummy(); }
       if (code === 'KeyG') { this.bloomOn = !this.bloomOn; this.ui.announceSmall(this.bloomOn ? 'Efeitos: brilho ligado' : 'Efeitos: brilho desligado'); }
       if (this.state === 'play') {
-        const s = STYLE_ORDER.find(id => code === 'Digit' + STYLES[id].key);
+        const s = STYLE_ORDER.find(id => act === 'style' + STYLES[id].key);
         if (s) this.player.setStyle(s);
-        if (code === 'KeyQ') this.player.setStyle(STYLE_ORDER[(STYLE_ORDER.indexOf(this.player.style) + 1) % 3]);
+        if (act === 'styleNext') this.player.setStyle(STYLE_ORDER[(STYLE_ORDER.indexOf(this.player.style) + 1) % 3]);
       }
       if (this.state === 'cards' && /^Digit[1-4]$/.test(code)) document.querySelectorAll('.card')[+code.slice(5) - 1]?.click();
     };
@@ -217,7 +224,7 @@ class Game {
     if (this.overworld) return this.overworld;
     const loader = new GLTFLoader(), names = ['pine', 'oldtree', 'rocks', 'crystals', 'pillar', 'arch', 'shrine', 'lantern', 'shrooms', 'tower', 'bush'];
     const props = {};
-    await Promise.all(names.map(n => loader.loadAsync(`assets/world/${n}.glb`).then(g => { props[n] = g.scene; }).catch(() => null)));
+    await Promise.all(names.map(n => loader.loadAsync(`assets/world/${n}.glb`).then(g => { fixNormals(g.scene); props[n] = g.scene; }).catch(() => null)));
     this.overworld = new Overworld(this, props);
     toonify(this.overworld.group);
     return this.overworld;
@@ -279,6 +286,35 @@ class Game {
     this.player.reset(this.stats); this.player.playOnce('Chest_Pound_Taunt', 0, 1, 4.8, .3);
     this.ui.hud(false); this.ui.show('title'); this.audio.stopMusic();
     document.getElementById('bestLine').textContent = this.meta.best ? `Melhor caçada: onda ${this.meta.best}  ·  ◆ ${this.meta.souls} almas no altar` : `◆ ${this.meta.souls} almas no altar`;
+  }
+
+  // ---- options ---------------------------------------------------------------------------------------
+  openOptions(from) {
+    this.ui.options(this.settings, (reset) => {
+      if (reset) this.settings.keys = settingsDefaults().keys;
+      this.applySettings(); saveSettings(this.settings);
+    }, () => { if (from === 'pause') this.pause(); else this.ui.show('title'); });
+  }
+
+  applySettings() {
+    const S = this.settings;
+    this.input.setKeys(Object.fromEntries(Object.entries(S.keys).filter(([, c]) => c)));
+    this.audio.setVolumes(S.master, S.music, S.sfx);
+    if (S.quality !== 'auto') this.setQuality(S.quality);
+  }
+
+  /** 3 = high, 2 = medium, 1 = low, 0 = minimum */
+  setQuality(q) {
+    if (this.qLevel === q) return;
+    this.qLevel = q;
+    const r = this.renderer, dpr = Math.min(devicePixelRatio, 1.5);
+    this.bloomOn = q >= 2;
+    r.setPixelRatio([.7, .85, 1, dpr][q]); this.resize();
+    const shadows = q >= 2;
+    if (r.shadowMap.enabled !== shadows) { r.shadowMap.enabled = shadows; this.scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); }); }
+    this.world.moon.shadow.mapSize.set(q >= 3 ? 2048 : 1024, q >= 3 ? 2048 : 1024); this.world.moon.shadow.map?.dispose(); this.world.moon.shadow.map = null;
+    const ow = this.overworld;
+    if (ow) { ow.grass.geometry.instanceCount = Math.round(42000 * [.15, .35, .6, 1][q]); ow.viewDist = [95, 120, 150, 175][q]; ow.inkDist = [0, 45, 70, 95][q]; }
   }
 
   saveMeta() { try { localStorage.setItem(STORE, JSON.stringify(this.meta)); } catch { /* storage unavailable: progress lives only this session */ } }
@@ -787,7 +823,7 @@ class Game {
   after(s, fn) { this.timers.push({ t: s, fn }); }
   hitstop(s) { this.stopT = Math.max(this.stopT, s); }
   slowmo(s, k) { this.slowT = Math.max(this.slowT, s); this.slowK = k; }
-  shake(a) { this.trauma = Math.min(1, this.trauma + a); }
+  shake(a) { this.trauma = Math.min(1, this.trauma + a * (this.settings?.shake ?? 1)); }
 
   frame() {
     const now = performance.now(), rdt = Math.min(.05, (now - this.last) / 1000); this.last = now;
@@ -849,10 +885,10 @@ class Game {
         yawGoal = behind + this.camSide * .6;
         focus.set(pp.x + dx * .38, 0, pp.z + dz * .38);
         dist = THREE.MathUtils.clamp(5.6 + D * .62, 6.6, 15); height = 2.7 + D * .15 + py * .6 + (L.T.boss ? 1 : 0);
-      } else if (this.input.device === 'pad' && Math.abs(this.input.aimStick.x) > .2) yawGoal = this.camYaw - this.input.aimStick.x * rdt * 2.6;
+      } else if (this.input.device === 'pad' && Math.abs(this.input.aimStick.x) > .2) yawGoal = this.camYaw - this.input.aimStick.x * rdt * 2.6 * this.settings.camSens;
       this.camYaw += angDiff(this.camYaw, yawGoal) * Math.min(1, rdt * (L ? 3.2 : 6));
       this.camFocus.lerp(focus, 1 - Math.exp(-rdt * 8));
-      this.camDist = THREE.MathUtils.damp(this.camDist, dist, 3, rdt); this.camH = THREE.MathUtils.damp(this.camH, height, 4, rdt);
+      const cs = this.settings.camDist; this.camDist = THREE.MathUtils.damp(this.camDist, dist * cs, 3, rdt); this.camH = THREE.MathUtils.damp(this.camH, height * (.6 + cs * .4), 4, rdt);
       const f = this.camFocus, lim = ARENA + 1.2;
       // keep the camera over the arena: shorten the boom (and lift it) instead of going into the obelisks
       let d = this.camDist;
@@ -892,19 +928,19 @@ class Game {
     this.composer.render();
   }
 
+  /** "Automatic" quality: step down when the frame rate sags, step back up when there is headroom */
   _autoQuality(rdt) {
-    if (this.state !== 'play') return;
+    if (this.settings?.quality !== 'auto') return;
+    if (this.qLevel === undefined) this.setQuality(3);
+    if (this.state !== 'play' || rdt <= 0) return;
     this.fpsAcc += rdt; this.fpsN++;
-    if (this.fpsAcc < 3) return;
+    if (this.fpsAcc < 2) return;
     const fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0;
-    if (fps < 42) {
-      if (++this.lowFps >= 2) {
-        this.lowFps = 0;
-        if (this.bloomOn) { this.bloomOn = false; this.ui.announceSmall('Desempenho: brilho desligado (G liga)'); }
-        else if (this.renderer.shadowMap.enabled) { this.renderer.shadowMap.enabled = false; this.scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); }
-        else if (this.renderer.getPixelRatio() > 1) this.renderer.setPixelRatio(1);
-      }
-    } else this.lowFps = 0;
+    this._qCool = Math.max(0, (this._qCool || 0) - 2);
+    if (this._qCool > 0) return;
+    if (fps < 48 && this.qLevel > 0) { this.setQuality(this.qLevel - 1); this._qCool = 4; this._goodT = 0; }
+    else if (fps > 58) { this._goodT = (this._goodT || 0) + 2; if (this._goodT >= 10 && this.qLevel < 3) { this.setQuality(this.qLevel + 1); this._qCool = 6; this._goodT = 0; } }
+    else this._goodT = 0;
   }
 }
 

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
-const MOVE = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
+const ARROWS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+const PUSH = { light: 'L', heavy: 'H', jump: 'J', dodge: 'D', skill1: 'S1', skill2: 'S2', ult: 'F' };
 // Standard gamepad layout (Xbox names): A0 B1 X2 Y3 LB4 RB5 LT6 RT7 Back8 Start9 LS10 RS11 Up12 Down13 Left14 Right15
 const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
 const DEAD = .22;
@@ -11,22 +12,19 @@ export class Input {
     this.ndc = new THREE.Vector2(); this.hasMouse = false; this.ray = new THREE.Raycaster();
     this.plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); this.hit = new THREE.Vector3();
     this.device = 'kb'; this.padIndex = -1; this.padPrev = []; this.stick = new THREE.Vector2(); this.aimStick = new THREE.Vector2();
-    this.held = { L: false, H: false }; this.camYaw = 0;
+    this.held = { L: false, H: false }; this.camYaw = 0; this.capture = null;
+    this.setKeys({ up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', light: 'KeyJ', heavy: 'KeyK', jump: 'Space', dodge: 'ShiftLeft', skill1: 'KeyE', skill2: 'KeyR', ult: 'KeyF' });
     addEventListener('keydown', e => {
       this.device = 'kb';
       if (e.repeat) return;
+      if (this.capture) { e.preventDefault(); const cb = this.capture; this.capture = null; cb(e.code); return; }
       this.keys.add(e.code);
-      if (e.code === 'Space') { this.push('J'); e.preventDefault(); }
-      else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'KeyC') { this.push('D'); e.preventDefault(); }
-      else if (e.code === 'KeyJ') { this.push('L'); this.held.L = true; }
-      else if (e.code === 'KeyK') { this.push('H'); this.held.H = true; }
-      else if (e.code === 'KeyF') this.push('F');
-      else if (e.code === 'KeyE') this.push('S1');
-      else if (e.code === 'KeyR') this.push('S2');
-      if (e.code === 'Tab') e.preventDefault();
-      this.onPress?.(e.code, e);
+      const act = this.codeAct[e.code] || (e.code === 'ShiftRight' ? 'dodge' : null);
+      if (act && PUSH[act]) { this.push(PUSH[act]); if (act === 'light') this.held.L = true; if (act === 'heavy') this.held.H = true; e.preventDefault(); }
+      if (e.code === 'Tab' || e.code === 'Space') e.preventDefault();
+      this.onPress?.(e.code, e, act);
     });
-    addEventListener('keyup', e => { this.keys.delete(e.code); if (e.code === 'KeyJ') this.held.L = false; if (e.code === 'KeyK') this.held.H = false; });
+    addEventListener('keyup', e => { this.keys.delete(e.code); const a = this.codeAct[e.code]; if (a === 'light') this.held.L = false; if (a === 'heavy') this.held.H = false; });
     addEventListener('blur', () => { this.keys.clear(); this.held.L = this.held.H = false; this.onPress?.('Blur'); });
     canvas.addEventListener('mousedown', e => {
       this.device = 'kb';
@@ -37,6 +35,13 @@ export class Input {
     addEventListener('mousemove', e => { this.ndc.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1); this.hasMouse = true; if (Math.abs(e.movementX) + Math.abs(e.movementY) > 2) this.device = 'kb'; });
     addEventListener('gamepadconnected', e => { this.padIndex = e.gamepad.index; this.onPress?.('PadConnected'); });
     addEventListener('gamepaddisconnected', e => { if (e.gamepad.index === this.padIndex) { this.padIndex = -1; this.stick.set(0, 0); this.aimStick.set(0, 0); } });
+  }
+
+  /** keymap: action -> KeyboardEvent.code */
+  setKeys(map) {
+    this.keymap = { ...map }; this.codeAct = {};
+    for (const [a, c] of Object.entries(this.keymap)) this.codeAct[c] = a;
+    this.move = { ...ARROWS, [map.up]: [0, -1], [map.down]: [0, 1], [map.left]: [-1, 0], [map.right]: [1, 0] };
   }
 
   push(k) { this.buf = { k, t: performance.now() / 1000 }; }
@@ -81,7 +86,7 @@ export class Input {
 
   moveVec() {
     const v = new THREE.Vector3();
-    for (const k of this.keys) { const m = MOVE[k]; if (m) { v.x += m[0]; v.z += m[1]; } }
+    for (const k of this.keys) { const m = this.move[k]; if (m) { v.x += m[0]; v.z += m[1]; } }
     if (this.stick.lengthSq() > 0) { v.x += this.stick.x; v.z += this.stick.y; }
     if (v.lengthSq() > 1) v.normalize();
     return this._cam(v);

@@ -12,6 +12,24 @@ const PROP_SPEC = { // target height (m), collision radius as a fraction of heig
   tower: { h: 24, r: .17, ink: .12 }, bush: { h: 1.6, r: 0, ink: .02 },
 };
 const col = c => new THREE.Color(c);
+// screen-door transparency driven by a per-instance aFade attribute
+function ditherize(mat) {
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    prev?.call(mat, sh, r);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
+attribute float aFade;
+varying float vFade;`).replace('#include <begin_vertex>', `#include <begin_vertex>
+vFade = aFade;`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying float vFade;`).replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+if (vFade < .999) { float n = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453); if (n > vFade) discard; }`);
+  };
+  mat.customProgramCacheKey = () => 'fade' + (mat.userData.ink ? 'ink' : '');
+  return mat;
+}
+const FADE_MATS = new Map();
+const fadeMaterial = m => FADE_MATS.get(m) || FADE_MATS.set(m, ditherize(m.clone())).get(m);
 let SOFT = null;
 function softTex() {
   if (SOFT) return SOFT;
@@ -192,6 +210,7 @@ export class Overworld {
 
   _props() {
     const r = this.T.rng, chunks = new Map(), N = Math.ceil(W * 2 / CHUNK);
+    this.occl = new Map(); this.fading = new Set();
     const place = {}; for (const k in PROP_SPEC) place[k] = [];
     const nearPoi = (x, z, pad) => this.T.pois.some(p => Math.hypot(p.x - x, p.z - z) < p.r + pad);
     // scatter by biome weights on a jittered grid
@@ -227,9 +246,15 @@ export class Overworld {
       for (const [key, items] of byChunk) {
         let c = chunks.get(key);
         if (!c) { c = { group: new THREE.Group(), ink: new THREE.Group(), cx: (key % N + .5) * CHUNK - W, cz: (Math.floor(key / N) + .5) * CHUNK - W }; chunks.set(key, c); this.group.add(c.group, c.ink); }
+        // occlusion records: one per placed prop, pointing at its fade slot in every part mesh
+        const recs = spec.h >= 2 ? items.map(it => ({ x: it[0], z: it[2], top: it[1] + spec.h * it[4], r: Math.max(1, spec.h * .2 * it[4]), cur: 1, fades: [] })) : null;
+        if (recs) for (const rc of recs) { const k = `${Math.floor(rc.x / 8)},${Math.floor(rc.z / 8)}`; (this.occl.get(k) || this.occl.set(k, []).get(k)).push(rc); }
         for (const part of parts) {
-          const im = new THREE.InstancedMesh(part.geo, part.mat, items.length);
-          const ink = new THREE.InstancedMesh(part.geo, inkMaterial(spec.ink / (part.m.getMaxScaleOnAxis() || 1), false), items.length);
+          const geo = part.geo.clone(), fade = new THREE.InstancedBufferAttribute(new Float32Array(items.length).fill(1), 1);
+          fade.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('aFade', fade);
+          if (recs) recs.forEach((rc, i) => rc.fades.push([fade, i]));
+          const im = new THREE.InstancedMesh(geo, fadeMaterial(part.mat), items.length);
+          const ink = new THREE.InstancedMesh(geo, ditherize(inkMaterial(spec.ink / (part.m.getMaxScaleOnAxis() || 1), false)), items.length);
           items.forEach((it, i) => {
             q.setFromAxisAngle(up, it[3]);
             m.compose(new THREE.Vector3(it[0], it[1] - .15, it[2]), q, new THREE.Vector3(it[4], it[4], it[4])).multiply(part.m);
@@ -243,6 +268,29 @@ export class Overworld {
       }
     }
     this.chunks = [...chunks.values()];
+  }
+
+  /** props standing between the camera and Eddie dissolve into a dither pattern */
+  _occlusion(dt, P, C) {
+    const px = P.x, pz = P.z, py = P.y + 1.3, sx = px - C.x, sz = P.z - C.z, L2 = sx * sx + sz * sz || 1;
+    const seen = new Set();
+    const x0 = Math.floor(Math.min(px, C.x) / 8) - 1, x1 = Math.floor(Math.max(px, C.x) / 8) + 1, z0 = Math.floor(Math.min(pz, C.z) / 8) - 1, z1 = Math.floor(Math.max(pz, C.z) / 8) + 1;
+    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) {
+      const cell = this.occl.get(`${cx},${cz}`); if (!cell) continue;
+      for (const rc of cell) {
+        const t = ((rc.x - C.x) * sx + (rc.z - C.z) * sz) / L2;
+        if (t <= 0 || t >= 1.02) continue;
+        const qx = C.x + sx * t, qz = C.z + sz * t, d = Math.hypot(rc.x - qx, rc.z - qz), lineY = C.y + (py - C.y) * t;
+        if (d < rc.r + .8 && rc.top > lineY - .4) { seen.add(rc); this.fading.add(rc); }
+      }
+    }
+    for (const rc of this.fading) {
+      const target = seen.has(rc) ? .18 : 1;
+      rc.cur += (target - rc.cur) * Math.min(1, dt * 7);
+      if (target === 1 && rc.cur > .985) rc.cur = 1;
+      for (const [a, i] of rc.fades) { a.array[i] = rc.cur; a.needsUpdate = true; }
+      if (rc.cur === 1) this.fading.delete(rc);
+    }
   }
 
   _addCollider(x, z, r) {
@@ -387,7 +435,8 @@ export class Overworld {
     this.moon.position.set(cam.x - 120, cam.y + 140, cam.z - 220);
     for (const o of [this.stars]) o.position.set(cam.x, 0, cam.z);
     // chunk culling by distance (ink outlines only up close)
-    for (const c of this.chunks) { const d = Math.hypot(c.cx - P.x, c.cz - P.z); c.group.visible = d < 175; c.ink.visible = d < 95; }
+    for (const c of this.chunks) { const d = Math.hypot(c.cx - P.x, c.cz - P.z); c.group.visible = d < (this.viewDist || 175); c.ink.visible = d < (this.inkDist || 95); }
+    this._occlusion(dt, P, cam);
     // region + fog tint
     const bid = this.biomeAt(P.x, P.z), B = BIOMES[bid];
     if (bid !== this.region) { this.region = bid; g.ui.announce(B.name, `Ameaça ${'★'.repeat(B.tier)}`, 1800); }

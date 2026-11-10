@@ -8,7 +8,7 @@ def qm(q):
     x,y,z,w=q; return np.array([[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w)],[2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w)],[2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y)]])
 def interp(t,T,V):
     i=np.clip(np.searchsorted(T,t)-1,0,len(T)-2); a=T[i];b=T[i+1]; f=0 if b==a else np.clip((t-a)/(b-a),0,1); return V[i]*(1-f)+V[i+1]*f
-for f in sorted(pathlib.Path(r"D:\EddieWolfunny\tools\raw").glob(sys.argv[1] if len(sys.argv) > 1 else "batch*.glb")):
+for f in sorted((pathlib.Path(__file__).resolve().parent / "raw").glob(sys.argv[1] if len(sys.argv) > 1 else "batch*.glb")):
     j,b=load(f); nodes=j["nodes"]; par={c:i for i,n in enumerate(nodes) for c in n.get("children",[])}
     name={i:n.get("name") for i,n in enumerate(nodes)}; idx={v:k for k,v in name.items()}
     for a in j["animations"]:

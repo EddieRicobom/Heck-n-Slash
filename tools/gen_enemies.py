@@ -8,7 +8,7 @@ import meshy_client
 from meshy_client import api, download, wait
 meshy_client.BASE = "https://api.meshy.ai/openapi/"
 
-RAW = pathlib.Path(r"D:\EddieWolfunny\tools\raw\enemies")
+RAW = pathlib.Path(__file__).resolve().parent / "raw" / "enemies"
 RAW.mkdir(parents=True, exist_ok=True)
 LOG = RAW / "enemies.json"
 STYLE = ("stylized low poly game enemy, flat shaded faceted look, dark obsidian and deep violet palette, "

@@ -26,6 +26,7 @@ export class Audio2 {
     for (let i = 0; i < n; i++) { const x = i * 2 / n - 1; cur[i] = (3 + k) * x * 20 * Math.PI / 180 / (Math.PI + k * Math.abs(x)); }
     this.dist.curve = cur; this.distOut = c.createGain(); this.distOut.gain.value = .5; this.dist.connect(this.distOut); this.distOut.connect(this.sfx); this.distOut.connect(this.verbIn);
     this.music = new Music(c, this.master); this.music.intensity = this._int || 0;
+    this._applyVol();
   }
 
   _impulse(sec, decay) {
@@ -34,7 +35,9 @@ export class Audio2 {
     return b;
   }
 
-  toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.value = this.muted ? 0 : .8; const k = this.ambKind; this.ambKind = null; if (k) this.setAmbience(k); return this.muted; }
+  setVolumes(master, music, sfx) { this.vol = { master, music, sfx }; this._applyVol(); }
+  _applyVol() { const v = this.vol || { master: .8, music: .7, sfx: 1 }; if (!this.ctx) return; this.master.gain.value = this.muted ? 0 : v.master; this.sfx.gain.value = v.sfx; if (this.music) this.music.out.gain.value = .2 * v.music / .7; }
+  toggleMute() { this.muted = !this.muted; this._applyVol(); const k = this.ambKind; this.ambKind = null; if (k) this.setAmbience(k); return this.muted; }
 
   // ---- building blocks -------------------------------------------------------------------------
   _out(node, verb = .25, dist = false) {

@@ -8,8 +8,8 @@ export const STYLES = {
     id: 'claws', name: 'Garras', key: 1, color: 0xb44dff, css: '#b44dff', move: 1.1,
     trait: 'Rápido. Todo acerto aplica sangramento.',
     moves: {
-      L: { name: 'Arranhão', anim: 'Left_Jab_from_Guard', from: .05, to: .42, dur: .34, hits: [{ f: .18, dmg: 9, arc: 110, range: 2.1, roll: .35, dir: 1 }] },
-      LL: { name: 'Corte Cruzado', anim: 'Right_Jab_from_Guard', from: .08, to: .42, dur: .34, hits: [{ f: .23, dmg: 10, arc: 110, range: 2.1, roll: -.35, dir: -1 }] },
+      L: { name: 'Arranhão', anim: 'Left_Jab_from_Guard', from: .05, to: .42, dur: .34, alts: [{ anim: 'Elbow_Strike', f: .49, span: .28 }], hits: [{ f: .18, dmg: 9, arc: 110, range: 2.1, roll: .35, dir: 1 }] },
+      LL: { name: 'Corte Cruzado', anim: 'Right_Jab_from_Guard', from: .08, to: .42, dur: .34, alts: [{ anim: 'Counterstrike', f: .39, span: .12 }], hits: [{ f: .23, dmg: 10, arc: 110, range: 2.1, roll: -.35, dir: -1 }] },
       LLL: { name: 'Gancho Lupino', anim: 'Left_Hook_from_Guard', from: .08, to: .62, dur: .42, lunge: 1, hits: [{ f: .30, dmg: 14, arc: 150, range: 2.3, knock: 3, roll: .1, dir: 1 }] },
       LLLL: { name: 'Uivo Rasgante', anim: 'Lunge_Spin_Kick', from: .2, to: .85, dur: .62, lunge: 1.5, hits: [{ f: .6, dmg: 24, arc: 360, range: 2.9, knock: 8, ring: 3.2, roll: 0, dir: 1, heavy: true }] },
       LLH: { name: 'Uppercut da Lua', anim: 'Right_Uppercut_from_Guard', from: .2, to: .8, dur: .5, locked: true, hits: [{ f: .5, dmg: 18, arc: 120, range: 2.3, launch: 9, roll: 1.4, dir: 1, heavy: true }] },

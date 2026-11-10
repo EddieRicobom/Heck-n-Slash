@@ -1,5 +1,6 @@
 import { STYLES, STYLE_ORDER, RANKS, RARITY, SHOP } from './data.js';
 import { SKILLS } from './skills.js';
+import { ACTIONS, keyLabel } from './settings.js';
 
 const $ = id => document.getElementById(id);
 let DEVICE = 'kb';
@@ -13,12 +14,13 @@ const SEQ = s => {
 export class UI {
   constructor(game) {
     this.g = game; this.cache = {};
-    this.screens = ['loading', 'title', 'how', 'shop', 'cards', 'pause', 'over'];
+    this.screens = ['loading', 'title', 'how', 'shop', 'cards', 'pause', 'over', 'options'];
     $('styles').innerHTML = STYLE_ORDER.map(id => `<div class="style" id="st_${id}" style="--c:${STYLES[id].css}"><small>${STYLES[id].key}</small>${STYLES[id].name}</div>`).join('');
     document.querySelectorAll('.back').forEach(b => b.onclick = () => { game.audio.ui(); this.show('title'); });
   }
 
   show(id) {
+    this.current = id;
     for (const s of this.screens) $(s).classList.toggle('hide', s !== id);
     const btn = id && $(id)?.querySelector('button,.card');
     if (btn) setTimeout(() => btn.focus(), 30);
@@ -81,6 +83,27 @@ export class UI {
     else if (code === 'PadA') (cur >= 0 ? items[cur] : items[0]).click();
     else if (code === 'PadB') { if (state === 'pause') $('btnResume').click(); else scr.querySelector('.back')?.click(); }
     else if (code === 'PadY' && state === 'cards') $('btnReroll').click();
+  }
+
+  /** options screen: sliders/select bound to the settings object, plus click-to-rebind keys */
+  options(S, onChange, back) {
+    const bind = (id, key, fmt = Number) => { const el = $(id); el.value = S[key]; el.oninput = () => { S[key] = fmt(el.value); onChange(); }; };
+    bind('optMaster', 'master'); bind('optMusic', 'music'); bind('optSfx', 'sfx'); bind('optCam', 'camDist'); bind('optSens', 'camSens'); bind('optShake', 'shake');
+    bind('optQuality', 'quality', v => v === 'auto' ? 'auto' : +v);
+    const render = () => {
+      $('keyList').innerHTML = ACTIONS.map(([a, label]) => `<div class="keyRow"><span>${label}</span><button data-a="${a}">${keyLabel(S.keys[a])}</button></div>`).join('');
+      $('keyList').querySelectorAll('button').forEach(b => b.onclick = () => {
+        b.textContent = 'Pressione…'; b.classList.add('wait');
+        this.g.input.capture = code => {
+          if (code !== 'Escape') { for (const k in S.keys) if (S.keys[k] === code) S.keys[k] = null; S.keys[b.dataset.a] = code; onChange(); }
+          render();
+        };
+      });
+    };
+    render();
+    $('btnKeysReset').onclick = () => { S.keys = null; onChange(true); this.options(this.g.settings, onChange, back); };
+    $('btnOptsBack').onclick = back;
+    this.show('options');
   }
 
   skillName(name, color) { this.moveName(name, color); }

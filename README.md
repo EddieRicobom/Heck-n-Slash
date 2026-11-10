@@ -4,7 +4,9 @@ Hack 'n' slash 3D em cel shading que roda no navegador (three.js), estrelado pel
 
 ## Como jogar
 
-Dê dois cliques em `jogar.bat` (precisa do Python ou do Node.js). Ele inicia um servidor local e abre o jogo em `http://localhost:8765/`.
+**Jogue no navegador:** https://eddiericobom.github.io/Heck-n-Slash/
+
+Para rodar localmente, dê dois cliques em `jogar.bat` (precisa do Python ou do Node.js). Ele inicia um servidor local e abre o jogo em `http://localhost:8765/`.
 
 Também dá para rodar manualmente:
 

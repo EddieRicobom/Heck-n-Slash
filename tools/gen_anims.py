@@ -6,7 +6,7 @@ import numpy as np
 from meshy_client import api, download, wait
 from inspect_rig import acc, load
 
-GAME = pathlib.Path(r"D:\EddieWolfunny")
+GAME = pathlib.Path(__file__).resolve().parents[1]
 RAW = GAME / "tools" / "raw"
 RIG = "01a1baab-7baf-75c8-84b2-6e9069d9f732"
 BATCHES = [

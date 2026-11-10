@@ -7,8 +7,8 @@ from PIL import Image
 from fix_eyes import read_glb, write_glb
 from inspect_rig import acc
 
-RAW = pathlib.Path(r"D:\EddieWolfunny\tools\raw\enemies")
-OUT = pathlib.Path(r"D:\EddieWolfunny\assets\enemies")
+RAW = pathlib.Path(__file__).resolve().parent / "raw" / "enemies"
+OUT = pathlib.Path(__file__).resolve().parents[1] / "assets" / "enemies"
 OUT.mkdir(parents=True, exist_ok=True)
 SIZE = 512
 

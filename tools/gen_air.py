@@ -6,7 +6,7 @@ import meshy_client
 from meshy_client import api, download, wait
 meshy_client.BASE = "https://api.meshy.ai/openapi/"
 
-RAW = pathlib.Path(r"D:\EddieWolfunny\tools\raw")
+RAW = (pathlib.Path(__file__).resolve().parent / "raw")
 (RAW / "weapons").mkdir(parents=True, exist_ok=True)
 RIG = "01a1baab-7baf-75c8-84b2-6e9069d9f732"
 CLIPS = [86, 100, 94, 92, 105, 4, 215, 207, 241, 202]

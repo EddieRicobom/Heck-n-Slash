@@ -2,6 +2,21 @@
 // and an anime post pass with impact frames and speed lines.
 import * as THREE from 'three';
 
+/** Some generated meshes ship vertices with zero-length normals; normalizing them in a shader yields NaN
+ *  pixels (which bloom then smears into black blocks). Give those vertices a valid normal. */
+export function fixNormals(root) {
+  let fixed = 0;
+  root.traverse(o => {
+    const n = o.geometry?.attributes?.normal; if (!n || o.geometry.userData.normalsFixed) return;
+    for (let i = 0; i < n.count; i++) {
+      const x = n.getX(i), y = n.getY(i), z = n.getZ(i), l = Math.hypot(x, y, z);
+      if (!(l > 1e-6)) { n.setXYZ(i, 0, 1, 0); fixed++; } else if (Math.abs(l - 1) > .01) n.setXYZ(i, x / l, y / l, z / l);
+    }
+    n.needsUpdate = true; o.geometry.userData.normalsFixed = true;
+  });
+  return fixed;
+}
+
 let GRADIENT = null;
 export function gradient() {
   if (GRADIENT) return GRADIENT;
