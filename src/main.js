@@ -802,12 +802,9 @@ class Game {
     let track = 'title', amb = 'none';
     if (this.state === 'over') track = this._won ? 'victory' : 'title';
     else if (this.state !== 'title') {
-      const pp = this.player.root.position;
-      const fighting = this.enemies.list.some(e => e.alive && e.aggro && e.pos.distanceTo(pp) < 32);
-      if (this.boss && this.boss.alive) track = 'boss';
-      else if (this.training) track = 'explore';
-      else if (this.mode === 'world') track = fighting ? 'combat' : 'explore';
-      else track = 'combat';
+      // one continuous theme that never switches; the combo meter (and bosses) add layers on top
+      track = 'main';
+      if (A.music) A.music.boss = !!(this.boss && this.boss.alive);
       amb = this.mode === 'world' ? (this.overworld?.region || 'grove') : 'arena';
       if (A.music) A.music.variant = this.mode === 'world' ? (this.overworld?.region || 'grove') : 'arena';
     }

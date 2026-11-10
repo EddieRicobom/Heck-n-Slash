@@ -198,7 +198,7 @@ export class Audio2 {
   boss() { this.bossRoar(); }
 
   // ---- music (delegated to the sequencer in music.js) ----------------------------------------
-  startMusic(name = 'combat') { this.music?.play(name); this.trackName = name; }
+  startMusic(name = 'main') { this.music?.play(name); this.trackName = name; }
   stopMusic() { this.music?.play('title'); this.trackName = 'title'; }
   setTrack(name) { if (this.trackName !== name) { this.trackName = name; this.music?.play(name); } }
   set intensity(v) { this._int = v; if (this.music) this.music.intensity = v; }

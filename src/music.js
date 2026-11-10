@@ -45,6 +45,32 @@ const TRACKS = {
       [[0, 69, 8], [8, 73, 4], [12, 76, 4]],
     ],
   },
+  // one continuous gameplay theme: calm at combo 0, then each style rank adds a layer on top
+  main: {
+    bpm: 168, swing: 0, lead: 'saw', arp: 'evolve', drums: 'evolve', pad: .7, guitar: true,
+    chords: [[50, MIN], [50, MIN], [46, MAJ], [48, MAJ], [50, MIN], [50, MIN], [43, MIN], [45, MAJ]],
+    melody: [
+      [[0, 62, 2], [2, 62, 2], [4, 69, 2], [6, 62, 2], [8, 67, 2], [10, 62, 2], [12, 65, 2], [14, 64, 2]],
+      [[0, 62, 2], [2, 62, 2], [4, 69, 2], [6, 62, 2], [8, 72, 2], [10, 70, 2], [12, 69, 2], [14, 67, 2]],
+      [[0, 58, 2], [2, 58, 2], [4, 65, 2], [6, 58, 2], [8, 70, 2], [10, 69, 2], [12, 67, 2], [14, 65, 2]],
+      [[0, 60, 2], [2, 60, 2], [4, 67, 2], [6, 60, 2], [8, 72, 4], [12, 74, 4]],
+      [[0, 74, 4], [4, 72, 2], [6, 69, 2], [8, 74, 4], [12, 76, 4]],
+      [[0, 77, 6], [6, 76, 2], [8, 74, 4], [12, 72, 4]],
+      [[0, 70, 4], [4, 69, 4], [8, 67, 4], [12, 70, 4]],
+      [[0, 69, 8], [8, 73, 4], [12, 76, 4]],
+    ],
+    // calm-state melody (half speed feel) played by the flute before the band kicks in
+    calm: [
+      [[0, 69, 8], [8, 67, 4], [12, 65, 4]],
+      [[0, 62, 12], [12, 64, 4]],
+      [[0, 65, 8], [8, 67, 4], [12, 69, 4]],
+      [[0, 67, 12], [12, 72, 4]],
+      [[0, 74, 8], [8, 72, 4], [12, 69, 4]],
+      [[0, 77, 8], [8, 76, 4], [12, 74, 4]],
+      [[0, 70, 8], [8, 69, 4], [12, 67, 4]],
+      [[0, 69, 12], [12, 73, 4]],
+    ],
+  },
   boss: {
     bpm: 160, swing: 0, lead: 'saw', arp: 'shred', drums: 'war', pad: .8, choir: true, guitar: true, minLevel: 2,
     chords: [[48, MIN], [44, MAJ], [41, MIN], [43, MAJ]],
@@ -119,12 +145,13 @@ export class Music {
     const cut = 500 + I * 2600;
     // pad: chord every bar
     if (s === 0) for (const k of iv) this.pad(mtof(root + 12 + k), sp * 16, .035 * T.pad * (dark ? 1.2 : 1), dark ? 600 : 1100);
-    if (T.choir && s === 0) for (const k of [0, 7, 12]) this.choir(mtof(root + 24 + k), sp * 16);
+    if ((T.choir || this.boss) && s === 0) for (const k of [0, 7, 12]) this.choir(mtof(root + 24 + k), sp * 16);
     // bass
-    const bassPat = T.drums === 'rock' || T.drums === 'war' ? [0, 3, 6, 8, 10, 11, 14] : [0, 8, 11];
-    if (bassPat.includes(s)) this.bass(mtof(root - 12 + (s === 11 && T.drums === 'soft' ? 7 : 0)), sp * (T.drums === 'soft' ? 6 : 1.6), cut);
     // combo-reactive layers: each one fades in with the style meter and out as it drains
-    const L = Math.max(this.level, T.minLevel || 0), lay = k => Math.max(0, Math.min(1, L - k + 1));
+    const L = Math.max(this.level, T.minLevel || 0, this.boss ? 1.5 : 0), lay = k => Math.max(0, Math.min(1, L - k + 1));
+    const drive = T.drums === 'rock' || T.drums === 'war' || (T.drums === 'evolve' && L >= 1), soft = T.drums === 'soft' || (T.drums === 'evolve' && !drive);
+    const bassPat = drive ? [0, 3, 6, 8, 10, 11, 14] : [0, 8, 11];
+    if (bassPat.includes(s)) this.bass(mtof(root - 12 + (s === 11 && soft ? 7 : 0)), sp * (soft ? 6 : 1.6), cut);
     if (T.guitar) {
       const five = [0, 7, 12];
       if (lay(1) > 0 && s % 2 === 0) this.guitar(root - 12, five, sp * .9, .55 * lay(1), true);            // palm-muted chugs
@@ -132,7 +159,12 @@ export class Music {
       if (lay(5) > 0 && s === 0) this.crash(t, .35 * lay(5));
     }
     // arpeggio
-    if (T.arp === 'shred') { if (lay(5) > 0) { const notes = [0, 3, 7, 12, 15, 19, 24, 19], k = notes[(s + bar * 3) % 8]; this.lead(mtof(root + 24 + k), sp * .9, 3000, .022 * lay(5)); } }
+    if (T.arp === 'evolve') {
+      const calm = 1 - lay(2);
+      if (calm > 0 && s % 4 === 0) { const notes = [...iv, 12, iv[1] + 12], k = notes[(s / 4 + bar) % notes.length]; this.pluck(mtof(root + 24 + k), .45, .03 * calm); }
+      if (lay(5) > 0) { const notes = [0, 3, 7, 12, 15, 19, 24, 19], k = notes[(s + bar * 3) % 8]; this.lead(mtof(root + 24 + k), sp * .9, 3000, .022 * lay(5)); }
+    }
+    else if (T.arp === 'shred') { if (lay(5) > 0) { const notes = [0, 3, 7, 12, 15, 19, 24, 19], k = notes[(s + bar * 3) % 8]; this.lead(mtof(root + 24 + k), sp * .9, 3000, .022 * lay(5)); } }
     else if (T.arp && s % 2 === 0 && (T.drums !== 'none' || s % 4 === 0)) {
       const notes = [...iv, 12, iv[1] + 12, 7 + 12], k = notes[(s / 2 + bar) % notes.length];
       const m = root + 24 + k + (this.variant === 'crystal' || this.variant === 'highlands' ? 12 : 0);
@@ -147,8 +179,9 @@ export class Music {
       else if (!T.guitar) this.lead(mtof(mm), sp * len, cut);
       else { if (lay(3) > 0) this.lead(mtof(mm), sp * len, 3200, .05 * lay(3)); if (lay(4) > 0) this.lead(mtof(mm + 4), sp * len, 2600, .03 * lay(4)); }
     }
+    if (T.calm) for (const [st, m, len] of T.calm[bar]) if (st === s && L < 2.5) this.flute(mtof(m + (dark ? -12 : 0)), sp * len);
     // drums
-    const D = T.drums;
+    const D = T.drums === 'evolve' ? (drive ? 'punk' : 'soft') : T.drums;
     if (D === 'soft') { if (s === 0 || s === 10) this.kick(t, .5); if (s === 8) this.snare(t, .18); if (s % 4 === 2) this.hat(t, .05); }
     if (D === 'rock') { if (s % 8 === 0 || s === 11) this.kick(t, .9); if (s === 4 || s === 12) this.snare(t, .5); if (s % 2 === 1 || I > .5) this.hat(t, .07 + I * .05); if (s === 15 && bar % 4 === 3) { this.tom(t, 180); this.tom(t + sp, 120); } }
     if (D === 'punk') { // driving punk beat; hats and fills arrive with the meter
