@@ -1,0 +1,6 @@
+# secrets: the Meshy API key lives here, never commit it
+.env
+# raw Meshy downloads (large, regenerable with tools/gen_*.py)
+tools/raw/
+__pycache__/
+*.pyc
