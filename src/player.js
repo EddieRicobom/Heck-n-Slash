@@ -106,6 +106,7 @@ export class Player {
     g.scale.set(1 / s.x, 1 / s.y, 1 / s.z);
     g.position.copy(arm.clone().applyQuaternion(inv).multiplyScalar(along).divide(s));
     g.quaternion.setFromUnitVectors(new V(0, 1, 0), ax.applyQuaternion(inv).normalize());
+    g.userData.handGrip = g.quaternion.clone();
     g.add(obj); bone.add(g);
     return g;
   }
@@ -518,7 +519,7 @@ export class Player {
     let moving = false;
     if (this.state === 'dead') { this.mixer.update(dt); this._blend(dt, false); this._trails(dt); return; }
 
-    const buf = inp.peek(.3);
+    const buf = inp.peek(.65);
     const lockedSpecial = this.state === 'attack' && this.move.seq === 'F' && this.moveT < this.move.hits[0].t;
     if (this.state === 'skill') {
       if (this.skill.update(dt)) { this.state = 'free'; this.skill = null; this._endShots(); }
@@ -564,7 +565,7 @@ export class Player {
         this.hitIdx++;
       }
       if (this.moveT >= m.cancel) {
-        const b = inp.peek(.45);
+        const b = inp.peek(.65);
         if (b === 'L' || b === 'H') {
           const next = this.pick(b);
           inp.take();
@@ -632,13 +633,8 @@ export class Player {
     });
   }
 
-  /** Meshy's rig has no fingers and hand rotations vary per clip, so outside of attacks the weapon is
-   *  aimed from the forearm (blade forward and up, like a guard); during attacks the animated hand drives it. */
+  /** Keep a readable guard in locomotion and blend into the animated wrist for attacks. */
   _grip(dt) {
-    // The Meshy rig has no fingers and every clip twists the hand bone differently, which left the
-    // weapons crooked. Their pose is now computed only from the forearm: the grip sits on the fist,
-    // claws continue the forearm, and blades leave the fist at a fixed angle (raised in guard, forward
-    // while swinging), so they always look held.
     if (!this.meshyWeapons) return;
     this.gripW = THREE.MathUtils.damp(this.gripW ?? 0, this.state === 'attack' || this.state === 'skill' ? 1 : 0, 12, dt || 1);
     this.root.updateMatrixWorld(true);
@@ -650,7 +646,8 @@ export class Player {
       let X = new V().crossVectors(Y, f); if (X.lengthSq() < 1e-4) X.crossVectors(Y, up); if (X.lengthSq() < 1e-4) X.set(1, 0, 0); X.normalize();
       const Z = new V().crossVectors(X, Y).normalize();
       const qWorld = new Q().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
-      g.quaternion.copy(bone.getWorldQuaternion(new Q()).invert().multiply(qWorld));
+      const guard = bone.getWorldQuaternion(new Q()).invert().multiply(qWorld);
+      g.quaternion.copy(guard).slerp(g.userData.handGrip, this.gripW);
       g.position.copy(bone.worldToLocal(hand.addScaledVector(f, along)));
     };
     const blade = (lift, lean) => f => {

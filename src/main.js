@@ -328,7 +328,7 @@ class Game {
   }
 
   pause() { this.state = 'pause'; this.ui.pause(this.player, this.picked.map(p => p.name)); }
-  resume() { this.ui.show(null); this.state = 'play'; this.input.take(); }
+  resume() { this.ui.show(null); this.state = 'play'; this.input.clear(); }
 
   // ---- run flow --------------------------------------------------------------------------------
   // ---- training -----------------------------------------------------------------------------------
@@ -480,7 +480,7 @@ class Game {
     if (c.kind === 'combo') { this.player.unlocked.add(c.style + ':' + c.seq); this.picked.push(`${c.name} (${SEQ(c.seq)})`); }
     else { this.stacks[c.id] = (this.stacks[c.id] || 0) + 1; c.apply(this.stats, this.player); this.picked.push(c.name); }
     this.player.heal(this.stats.maxHp * .15);
-    this.ui.show(null); this.state = 'play'; this.input.take();
+    this.ui.show(null); this.state = 'play'; this.input.clear();
     if (this.mode !== 'world') this.nextWave();
   }
 

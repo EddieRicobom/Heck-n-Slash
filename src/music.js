@@ -127,7 +127,7 @@ export class Music {
       const s = this.step % barLen, bar = Math.floor(this.step / barLen) % bars;
       // switch tracks only on bar boundaries, with a short fade
       if (s === 0 && this.want !== this.trackName) {
-        if (!this.fading) { this.fading = true; this.bus.gain.setTargetAtTime(.001, this.next - .3, .12); }
+        if (!this.fading) { this.fading = true; this.bus.gain.setTargetAtTime(.001, Math.max(0, this.next - .3), .12); }
         this._start(this.want); this.fading = false;
         if (!this.track) return;
         continue;

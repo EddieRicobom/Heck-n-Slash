@@ -8,7 +8,7 @@ const DEAD = .22;
 
 export class Input {
   constructor(canvas, camera) {
-    this.camera = camera; this.keys = new Set(); this.buf = null; this.onPress = null;
+    this.camera = camera; this.keys = new Set(); this.buf = []; this.onPress = null;
     this.ndc = new THREE.Vector2(); this.hasMouse = false; this.ray = new THREE.Raycaster();
     this.plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); this.hit = new THREE.Vector3();
     this.device = 'kb'; this.padIndex = -1; this.padPrev = []; this.stick = new THREE.Vector2(); this.aimStick = new THREE.Vector2();
@@ -44,9 +44,17 @@ export class Input {
     this.move = { ...ARROWS, [map.up]: [0, -1], [map.down]: [0, 1], [map.left]: [-1, 0], [map.right]: [1, 0] };
   }
 
-  push(k) { this.buf = { k, t: performance.now() / 1000 }; }
-  peek(age) { return this.buf && performance.now() / 1000 - this.buf.t <= age ? this.buf.k : null; }
-  take() { this.buf = null; }
+  push(k) {
+    if (k !== 'L' && k !== 'H') this.clear();
+    if (this.buf.length < 2) this.buf.push({ k, t: performance.now() / 1000 });
+  }
+  peek(age) {
+    const now = performance.now() / 1000;
+    while (this.buf.length && now - this.buf[0].t > age) this.buf.shift();
+    return this.buf[0]?.k ?? null;
+  }
+  take() { this.buf.shift(); }
+  clear() { this.buf.length = 0; }
 
   /** Poll the gamepad once per frame: buffers combat buttons and reports edges for menus and styles. */
   poll() {
