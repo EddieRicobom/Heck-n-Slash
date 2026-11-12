@@ -953,7 +953,9 @@ class Game {
     } else {
       // Arena-fighter camera: low, behind Eddie and off to one side, framing Eddie and the locked target.
       const L = this._lockOn(), py = Math.max(0, p.y || 0);
-      let yawGoal = this.camYaw, dist = 7.2, height = 3.1 + py * .6, focus = pp.clone();
+      let yawGoal = this.camYaw, dist = 7.2 + (p.sprint ? .8 : 0), height = 3.1 + py * .6, focus = pp.clone();
+      if (p.state === 'free') { const lv = p.vel; focus.x += THREE.MathUtils.clamp(lv.x * .22, -2, 2); focus.z += THREE.MathUtils.clamp(lv.z * .22, -2, 2); }
+      if (this.mode !== 'world') { const r = Math.hypot(focus.x, focus.z), lim = ARENA - 3; if (r > lim && r > Math.hypot(pp.x, pp.z)) focus.multiplyScalar(Math.max(lim, Math.hypot(pp.x, pp.z)) / r); }
       if (L) {
         const dx = L.pos.x - pp.x, dz = L.pos.z - pp.z, D = Math.max(.1, Math.hypot(dx, dz));
         const behind = Math.atan2(-dx, -dz), a = behind + .6, b = behind - .6;
@@ -985,7 +987,8 @@ class Game {
     if (this.debugCam) { const d = this.debugCam; this.camera.position.set(pp.x + d[0], pp.y + d[1], pp.z + d[2]); look = new THREE.Vector3(pp.x, pp.y + d[3], pp.z); }
     this.camera.lookAt(look);
     this.fovKick = Math.max(0, (this.fovKick || 0) - rdt * 14);
-    const fov = (this.state === 'title' ? 42 : 52) - this.fovKick;
+    this.sprintFov = THREE.MathUtils.damp(this.sprintFov || 0, p.sprint && this.state === 'play' ? 5 : 0, 4, rdt);
+    const fov = (this.state === 'title' ? 42 : 52) - this.fovKick + this.sprintFov;
     if (Math.abs(this.camera.fov - fov) > .01) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     this.world.update(this.time, pp, STYLES[p.style].color, p.power || 0);
 

@@ -306,6 +306,8 @@ export class Player {
     const loco = Math.max(0, 1 - sum);
     this.runW = THREE.MathUtils.damp(this.runW || 0, moving ? 1 : 0, 12, dt);
     this.idle.setEffectiveWeight(loco * (1 - this.runW)); this.run.setEffectiveWeight(loco * this.runW);
+    // feet keep pace with the ground: the run cycle speeds up with the actual velocity
+    this.run.timeScale = THREE.MathUtils.clamp(Math.hypot(this.vel.x, this.vel.z) / 7, .75, 1.45);
   }
 
   _endShots() { if (this.airborne && this.state !== 'attack') return; for (const s of this.shots) { s.target = 0; s.rate = 1 / .18; } }
@@ -396,6 +398,7 @@ export class Player {
     }
     if (move.dash) { g.speedLines(.3); this.ghosts(5); }
     if (move.dash || (this.lunge || 0) > 2.2) this.burst(this.facing, move.dash ? 1.2 : .8);
+    this.sprint = false;
     this.move = move; this.moveT = 0; this.hitIdx = 0; this.state = 'attack'; this.seq = move.cont ?? move.seq; this.dashHits = new Set();
     this.counter = this.counterT > 0 && (move.seq[0] === 'd'); this.counterT = 0;
     if (move.dash) this.iframe = Math.max(this.iframe, this.lungeEnd + .05);
@@ -441,6 +444,21 @@ export class Player {
     this.airborne = true; this.state = 'free'; this.comboGrace = 0;
     g.fx.dust(p.x, p.z, 6); g.audio.jump(); this.squash = -.16; this.ghosts(2);
     return true;
+  }
+
+  _startSprint() {
+    this.sprint = true;
+    this.burst(this.facing, .55); this.game.speedLines(.15);
+  }
+
+  /** braking hard: dust plume, sparks off the feet, the body leans back */
+  _skid(cur) {
+    const g = this.game, p = this.root.position, a = Math.atan2(this.vel.x, this.vel.z);
+    this.skidCd = .6; this.sprint = false; this.runT = 0;
+    g.fx.dust(p.x + Math.sin(a) * .4, p.z + Math.cos(a) * .4, 9);
+    g.fx.spray(p.x, .15, p.z, a, 10, this.char.id === 'eddie' ? 0xd8ccef : 0xffc65c, cur * .9, .05);
+    this.leanX = -.28; this.squash = Math.max(this.squash || 0, .1);
+    g.audio._noise({ dur: .22, f0: 2400, f1: 700, q: 1.2, vol: .07, verb: 0 });
   }
 
   /** anime acceleration burst: dust plume, streaks flying backwards, camera punch and speed lines */
@@ -620,13 +638,27 @@ export class Player {
     else if (buf === 'F' && this.fury >= 100 && this.state !== 'dodge') { inp.take(); this.special(); }
 
     if (this.state === 'free') {
-      const mv = inp.moveVec(), sp = 6.8 * st.speed * this.styleDef.move * (this.moonT > 0 ? 1.15 : 1);
-      this.vel.x = THREE.MathUtils.damp(this.vel.x, mv.x * sp, 20, dt);
-      this.vel.z = THREE.MathUtils.damp(this.vel.z, mv.z * sp, 20, dt);
+      const mv = inp.moveVec(), cur = Math.hypot(this.vel.x, this.vel.z);
       moving = mv.lengthSq() > .01;
-      if (moving) this.facing += angDiff(this.facing, Math.atan2(mv.x, mv.z)) * Math.min(1, dt * 20);
+      // sprint: dodging while holding a direction (or running for a while) breaks into a dash-run
+      this.runT = moving && !this.airborne ? (this.runT || 0) + dt : 0;
+      if (!moving) this.sprint = false; else if (!this.sprint && this.runT > 1.4) this._startSprint();
+      const sp = 6.8 * st.speed * this.styleDef.move * (this.moonT > 0 ? 1.15 : 1) * (this.sprint ? 1.42 : 1);
+      // skid: letting go or reversing at speed digs the feet in
+      this.skidCd = Math.max(0, (this.skidCd || 0) - dt);
+      if (!this.airborne && cur > 7 && this.skidCd <= 0 && (!moving || (mv.x * this.vel.x + mv.z * this.vel.z) / cur < -.3)) this._skid(cur);
+      // quick to start, a touch of slide when stopping, floaty in the air
+      const rate = this.airborne ? 7 : moving ? (cur < sp * .5 ? 22 : 12) : 15;
+      this.vel.x = THREE.MathUtils.damp(this.vel.x, mv.x * sp, rate, dt);
+      this.vel.z = THREE.MathUtils.damp(this.vel.z, mv.z * sp, rate, dt);
+      if (moving) this.facing += angDiff(this.facing, Math.atan2(mv.x, mv.z)) * Math.min(1, dt * (this.sprint ? 11 : 20));
       p.x += this.vel.x * dt; p.z += this.vel.z * dt;
-      if (moving && !this.airborne && (this.stepT = (this.stepT || 0) - dt) <= 0) { this.stepT = .27; g.fx.dust(p.x, p.z, 2); g.audio.step(g.mode === 'world'); }
+      if (moving && !this.airborne && !this._wasMoving && cur < 1.5) { g.fx.dust(p.x, p.z, 4); this.squash = Math.min(this.squash || 0, -.06); }
+      this._wasMoving = moving;
+      if (moving && !this.airborne && (this.stepT = (this.stepT || 0) - dt) <= 0) {
+        this.stepT = THREE.MathUtils.clamp(1.9 / Math.max(1, cur), .16, .3); g.fx.dust(p.x, p.z, this.sprint ? 3 : 2); g.audio.step(g.mode === 'world');
+      }
+      if (this.sprint && !this.airborne && Math.random() < .5) { const s = Math.random() < .5 ? 1 : -1, a = this.facing + Math.PI; g.fx.spark(p.x + Math.cos(this.facing) * .5 * s, .6 + Math.random() * 1.1, p.z - Math.sin(this.facing) * .5 * s, Math.sin(a) * 9, 0, Math.cos(a) * 9, .2, .035, 0xffffff, 0); }
       this.idleT = moving || this.airborne ? 0 : (this.idleT || 0) + dt;
       if (this.idleT > 7 && g.state === 'play') { this.idleT = -12; if (Math.random() < .45 && this.clips.FunnyDancing_01) this.playOnce('FunnyDancing_01', .05, .4, 2.6, .25); else this.playOnce('Chest_Pound_Taunt', .12, .62, 2.4, .2); }
       if (this.comboGrace <= 0) this.seq = '';
@@ -674,7 +706,7 @@ export class Player {
       }
       const b = inp.peek(.3);
       if ((b === 'L' || b === 'H') && this.t > .14) { const m = this.pick(b); if (m) { inp.take(); this.startMove(m); return this._post(dt, false); } }
-      if (this.t > .4) { this.state = 'free'; this.dodgeEnd = this.time; if (!this.airborne) this._endShots(); }
+      if (this.t > .4) { this.state = 'free'; this.dodgeEnd = this.time; if (!this.airborne) this._endShots(); if (!this.airborne && !this.sidestep && inp.moveVec().lengthSq() > .25) { this.vel.set(Math.sin(this.dodgeDir) * 8, 0, Math.cos(this.dodgeDir) * 8); this._startSprint(); } }
     } else if (this.state === 'hurt') {
       this.t += dt;
       p.x += this.vel.x * dt; p.z += this.vel.z * dt; this.vel.multiplyScalar(Math.exp(-dt * 8));
@@ -700,7 +732,7 @@ export class Player {
     if (st2 > .05 && Math.random() < st2 * 3) { const b = this.facing + Math.PI; this.game.fx.spray(pv.x, this.y + .9 + Math.random() * .6, pv.z, b, 2, Math.random() < .5 ? 0xffffff : this.styleDef.color, 9, .04); }
     const turnRate = angDiff(this.root.rotation.y, this.facing) / Math.max(dt, 1e-3);
     this.leanZ = THREE.MathUtils.damp(this.leanZ || 0, THREE.MathUtils.clamp(-turnRate * .012, -.22, .22) * Math.min(1, sp2 / 5), 8, dt);
-    this.leanX = THREE.MathUtils.damp(this.leanX || 0, this.state === 'free' && !this.airborne ? Math.min(.14, sp2 * .018) : 0, 6, dt);
+    this.leanX = THREE.MathUtils.damp(this.leanX || 0, this.state === 'free' && !this.airborne ? Math.min(this.sprint ? .24 : .14, sp2 * .022) : 0, 6, dt);
     this.model.rotation.set(this.leanX, 0, this.leanZ);
     this._ghostUpdate(dt);
     this._power(dt);

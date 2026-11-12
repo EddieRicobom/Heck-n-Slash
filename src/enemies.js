@@ -236,7 +236,7 @@ export class Enemy {
       if ((this._blockMsg = (this._blockMsg || 0) - 1) <= 0) { g.fx.number(this.pos.x, 2.8, this.pos.z, 'BLOQUEIO', false, '#7fe9ff'); this._blockMsg = 3; }
       if (this.guardHits >= 5) { this.guard = false; this.guardHits = 0; this.stun = 1.2; g.ui.announceSmall('GUARDA QUEBRADA!'); g.audio.shock(); }
     }
-    this.hp -= dmg; this.flash = .07; this.hitPulse = 1; if (o.dir !== undefined) this.lastDir = o.dir;
+    this.hp -= dmg; this.flash = .07; this.hitPulse = 1; this.hitLean = o.heavy ? 1 : .6; if (o.dir !== undefined) this.lastDir = o.dir;
     if (!this.aggro) this.alert();
     g.onDamage?.(dmg);
     if (this.T.immortal) this.hp = this.maxHp;
@@ -299,7 +299,7 @@ export class Enemy {
     if (this.guard && Math.random() < dt * 10) g.fx.spark(this.pos.x + Math.sin(this.facing) * this.r, 1 + Math.random(), this.pos.z + Math.cos(this.facing) * this.r, 0, .5, 0, .3, .08, 0x7fe9ff, 0);
     if (this.phase2 && Math.random() < dt * 30) { const a = Math.random() * 6.28, r = this.r * 1.2; g.fx.spark(this.pos.x + Math.cos(a) * r, Math.random() * 3, this.pos.z + Math.sin(a) * r, 0, 3 + Math.random() * 3, 0, .6, .12, Math.random() < .5 ? 0xff3a2a : 0xffb347, -2); }
     if (this.elite && Math.random() < dt * 9) g.fx.spark(this.pos.x + (Math.random() - .5) * this.r * 2, .2 + Math.random() * 1.5 + (this.flyY || 0), this.pos.z + (Math.random() - .5) * this.r * 2, 0, 1.5, 0, .7, .07, 0xffc65c, -1);
-    if (this.flash > 0) for (const m of this.mats) m.emissive.setRGB(.16, .1, .24);
+    if (this.flash > 0) { const k = Math.min(1, this.flash / .07) * .85; for (const m of this.mats) m.emissive.setRGB(k, k, k); }
     else if (this.stun > 0) { const s = .07 + .05 * Math.sin(this.phase * 18); for (const m of this.mats) m.emissive.setRGB(s * .8, s * .5, s * 1.6); }
     else for (const m of this.mats) m.emissive.setRGB(0, 0, 0);
     if (this.bleedT > 0) {
@@ -587,10 +587,12 @@ export class Enemy {
       this.walkA.timeScale = Math.max(.6, speed / this.speed * 1.1);
       this.mixer.update(this.stun > 0 ? dt * .2 : dt);
       P.holder.rotation.x = (this.stun > 0 ? -.15 : 0) - this.hitPulse * .22;
+      this._recoil(P.holder);
       return;
     }
     const hp = this.hitPulse || 0;
     P.holder.rotation.x = -hp * .35; P.holder.scale.set(1 + hp * .12, 1 - hp * .16, 1 + hp * .12);
+    this._recoil(P.holder);
     const cfg = MODEL[this.type], hop = Math.abs(Math.sin(ph * (5 + speed * 1.6))) * Math.min(1, speed / 2);
     const y0 = cfg.y || 0;
     if (cfg.float) {
@@ -604,6 +606,16 @@ export class Enemy {
       P.model.rotation.x = -wind * .45 + (this.state === 'recover' && this.t < .15 ? .35 : 0) + Math.sin(ph * 10) * .05 * Math.min(1, speed / 2);
       P.model.scale.set(cfg.scale, cfg.scale * (1 - wind * .12), cfg.scale * (1 + wind * .08));
     }
+  }
+
+  /** the body snaps back along the blow and trembles for an instant (frozen during hitstop) */
+  _recoil(h) {
+    const hp = this.hitPulse || 0, lean = (this.hitLean || 0) * hp;
+    if (lean > .01 && this.lastDir !== undefined) {
+      const local = this.lastDir - this.root.rotation.y;
+      h.rotation.x += Math.cos(local) * lean * .35; h.rotation.z = -Math.sin(local) * lean * .35;
+      h.position.x = (Math.random() - .5) * .09 * hp; h.position.z = (Math.random() - .5) * .09 * hp;
+    } else { h.rotation.z = 0; h.position.x = h.position.z = 0; }
   }
 
   _animate(dt, speed) {
