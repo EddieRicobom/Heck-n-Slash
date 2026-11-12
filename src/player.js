@@ -436,6 +436,7 @@ export class Player {
       this.vy = 9; this.jumps = 2; this.airUsed = false; this.airSeq = '';
       this.playOnce('Rightward_Spin', .1, .7, .45, .06);
       g.fx.ring(p.x, p.z, 1.2, 0xffffff, .25, p.y + .1);
+      if (this.char.id !== 'eddie') for (let i = 0; i < 14; i++) g.fx.spark(p.x + (Math.random() - .5) * .3, this.y + .6, p.z + (Math.random() - .5) * .3, (Math.random() - .5) * 3, -8 - Math.random() * 6, (Math.random() - .5) * 3, .25, .09, [0xffffff, 0xffc65c, 0xff8a2a, 0x3dff8a][i % 4], 0);
     } else return false;
     this.airborne = true; this.state = 'free'; this.comboGrace = 0;
     g.fx.dust(p.x, p.z, 6); g.audio.jump(); this.squash = -.16; this.ghosts(2);
@@ -451,6 +452,19 @@ export class Player {
     g.fx.ring(p.x, p.z, 1.4 * k, 0xffffff, .2, this.y + .1);
     g.fovKick = Math.max(g.fovKick || 0, 2.5 * k); g.speedLines(.18 * k);
     this.squash = Math.min(this.squash || 0, -.08);
+    if (this.char.id !== 'eddie') this.thrust(back, k);
+  }
+
+  /** the Tigress's back thrusters: a jet of flame and green arcs pushing her forward */
+  thrust(back, k = 1) {
+    const g = this.game, p = this.root.position, y = this.y + 1.15;
+    const bx = p.x + Math.sin(back) * .35, bz = p.z + Math.cos(back) * .35;
+    for (let i = 0; i < Math.round(16 * k); i++) {
+      const s = 6 + Math.random() * 10, a = back + (Math.random() - .5) * .5;
+      g.fx.spark(bx, y + (Math.random() - .5) * .3, bz, Math.sin(a) * s, (Math.random() - .3) * 2, Math.cos(a) * s, .18 + Math.random() * .15, .07 + Math.random() * .06, [0xffffff, 0xffc65c, 0xff8a2a, 0x3dff8a][i % 4], 0);
+    }
+    for (let i = 0; i < 2; i++) { const a = back + (Math.random() - .5) * .9, r = 1 + Math.random(); g.fx.bolt(new V(bx, y, bz), new V(bx + Math.sin(a) * r, y + (Math.random() - .5) * .6, bz + Math.cos(a) * r), 0x3dff8a); }
+    g.fx.impact(bx, y, bz, .9 * k, 0xffc65c, .08);
   }
 
   /** afterimages: frozen translucent copies of Eddie's current pose that fade out */

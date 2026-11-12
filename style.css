@@ -1,4 +1,4 @@
-:root{--purple:#b44dff;--lime:#b7dc6a;--tan:#c9ad86;--ink:#0d0a14;--panel:#17121fee;--line:#ffffff22;--red:#ff4a5e;--amber:#ffb347;--cyan:#59e0ff}
+:root{--accent:#b44dff;--purple:#b44dff;--lime:#b7dc6a;--tan:#c9ad86;--ink:#0d0a14;--panel:#17121fee;--line:#ffffff22;--red:#ff4a5e;--amber:#ffb347;--cyan:#59e0ff}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#07050c;overflow:hidden;color:#f2ecf9;font-family:"Segoe UI",system-ui,sans-serif;user-select:none}
 canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
@@ -15,12 +15,12 @@ canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
 #hpGhost{background:#fff8;transition:width .5s .15s}
 .bar span{position:absolute;inset:0;text-align:center;font-size:12px;font-weight:800;line-height:19px;text-shadow:0 1px 2px #000;transform:skewX(12deg)}
 .fury{height:12px}.fury span{font-size:9px;line-height:11px}
-#furyFill{background:linear-gradient(90deg,#6c2bd9,var(--purple))}
-.fury.ready{box-shadow:0 0 14px var(--purple);border-color:var(--purple)}
+#furyFill{background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 55%,#000),var(--accent))}
+.fury.ready{box-shadow:0 0 14px var(--accent);border-color:var(--accent);animation:furyGlow .5s infinite alternate}
 #dodges{display:flex;gap:5px;margin-top:3px}
 .pip{width:26px;height:7px;background:#0009;border:1px solid var(--line);transform:skewX(-12deg);overflow:hidden}
 .pip i{display:block;height:100%;background:var(--lime)}
-#buffs{margin-top:8px;font-size:13px;font-weight:800;color:var(--purple);text-shadow:0 1px 3px #000;min-height:18px}
+#buffs{margin-top:8px;font-size:13px;font-weight:800;color:var(--accent);text-shadow:0 1px 3px #000;min-height:18px}
 #topCenter{position:absolute;left:50%;top:16px;transform:translateX(-50%);width:min(620px,46vw);text-align:center}
 #waveLabel{font-weight:900;letter-spacing:3px;font-size:17px;text-shadow:0 2px 6px #000}
 #bossName{font-weight:900;margin:8px 0 4px;letter-spacing:2px;color:var(--amber);text-shadow:0 2px 6px #000}
@@ -74,7 +74,7 @@ canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
 @keyframes bcSub{0%,25%{opacity:0}40%,80%{opacity:1}100%{opacity:0}}
 .optGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px 28px}
 .optGrid label{display:flex;flex-direction:column;gap:6px;font-weight:700;font-size:14px}
-.optGrid input[type=range]{accent-color:var(--purple);pointer-events:auto}
+.optGrid input[type=range]{accent-color:var(--accent);pointer-events:auto}
 .optGrid select{pointer-events:auto;background:#0008;color:#fff;border:1px solid var(--line);padding:6px;font:inherit}
 #keyList{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 28px}
 .keyRow{display:flex;justify-content:space-between;align-items:center;font-size:14px}
@@ -92,15 +92,15 @@ canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
 #announce small{display:block;font-size:19px;letter-spacing:2px;color:var(--tan)}
 .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:18px;background:#07050cb8;overflow:auto}
 #title{background:linear-gradient(90deg,#07050ce0 0%,#07050c80 42%,transparent 65%);align-items:flex-start;padding-left:8vw}
-#title h1{font-size:clamp(40px,6.4vw,92px);margin:0;line-height:.95;letter-spacing:2px;font-weight:900;font-style:italic}
-#title h3{margin:8px 0 34px;font-size:clamp(18px,2.3vw,30px);color:var(--purple);letter-spacing:6px;font-weight:800}
+#title h1{text-shadow:0 0 30px color-mix(in srgb,var(--accent) 55%,transparent),0 5px 0 #000;font-size:clamp(38px,6vw,88px);margin:0;line-height:.95;letter-spacing:2px;font-weight:900;font-style:italic}
+#title h3{margin:8px 0 34px;font-size:clamp(18px,2.3vw,30px);color:var(--accent);letter-spacing:6px;font-weight:800}
 #bestLine{margin-top:22px;color:var(--tan);font-size:14px}
 #loading{background:#07050c}
 #loadErr{color:var(--red);max-width:600px}
 .menu{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
 .menu.row{flex-direction:row;flex-wrap:wrap;justify-content:center;margin-top:14px}
 button{pointer-events:auto;background:#fff1;color:inherit;border:1px solid var(--line);padding:12px 30px;font:800 17px "Segoe UI",sans-serif;letter-spacing:1px;cursor:pointer;transform:skewX(-10deg);transition:all .1s}
-button:hover:not(:disabled),button:focus-visible{background:var(--purple);border-color:#fff;color:#fff}
+button:hover:not(:disabled),button:focus-visible{background:var(--accent);box-shadow:0 0 18px var(--accent);border-color:#fff;color:#fff}
 button:disabled{opacity:.35;cursor:default}
 .panel{background:var(--panel);border:1px solid var(--line);padding:26px 32px;max-width:680px;width:100%;max-height:92vh;overflow:auto}
 .panel.wide{max-width:1020px}
@@ -151,3 +151,17 @@ button:focus-visible,.card:focus{outline:2px solid #fff;outline-offset:3px}
 .node.owned{background:color-mix(in srgb,var(--c) 14%,#0008);box-shadow:0 0 14px color-mix(in srgb,var(--c) 40%,transparent)}
 .node.locked{opacity:.5}
 @media (max-width:900px){#treeGrid,.treeHead{grid-template-columns:1fr}#treeGrid .node{grid-column:auto!important;grid-row:auto!important}.treeHead{display:none}}
+
+/* polish: character badge, combo pops, low health, fury glow */
+#charBadge{display:flex;align-items:baseline;gap:10px;margin:0 0 6px 2px;transform:skewX(-12deg)}
+#charBadge b{font-size:15px;font-weight:900;font-style:italic;letter-spacing:3px;color:var(--accent);text-shadow:0 0 12px var(--accent),0 2px 3px #000}
+#charBadge span{font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;text-shadow:0 1px 3px #000}
+.bar.low{animation:lowHp .55s infinite alternate;border-color:var(--red)}
+@keyframes lowHp{to{box-shadow:0 0 16px var(--red)}}
+@keyframes furyGlow{to{box-shadow:0 0 26px var(--accent)}}
+#comboNum.pop{animation:cPop .18s cubic-bezier(.2,1.8,.4,1)}
+@keyframes cPop{0%{transform:scale(1.35);color:#fff}100%{transform:scale(1)}}
+#rankName.rankPop{animation:rPop .55s cubic-bezier(.2,1.6,.4,1)}
+@keyframes rPop{0%{transform:scale(2.2) skewX(-12deg);filter:brightness(2.5)}100%{transform:scale(1) skewX(0)}}
+#comboNum,#rankName{transform-origin:right center;display:block}
+.screen#title::after{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--accent);box-shadow:0 0 30px var(--accent)}

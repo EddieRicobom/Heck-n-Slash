@@ -23,6 +23,10 @@ export class UI {
 
   /** title screen: the character switch and her skill tree button */
   charInfo(C) {
+    document.body.style.setProperty('--accent', C.css);
+    document.body.dataset.char = C.id;
+    $('titleName').textContent = C.name.toUpperCase();
+    $('cbName').textContent = C.short.toUpperCase();
     $('btnChar').innerHTML = `Personagem: <b style="color:${C.css}">${C.name}</b> ⇄`;
     $('charLine').textContent = `${C.title} · ${C.styles.map(s => STYLES[s].name).join(' · ')}`;
     $('btnTree').classList.toggle('hide', C.id !== 'tigress');
@@ -58,6 +62,8 @@ export class UI {
     this._set('hpFill', 'width', `${p.hp / st.maxHp * 100}%`);
     this._set('hpGhost', 'width', `${p.hp / st.maxHp * 100}%`);
     this._set('hpText', 'text', `${Math.ceil(p.hp)} / ${st.maxHp}`);
+    const low = p.hp < st.maxHp * .3; if (this._low !== low) { this._low = low; $('hpFill').parentElement.classList.toggle('low', low); }
+    this._set('cbStyle', 'text', p.styleDef.name); this._set('cbStyle', 'color', p.styleDef.css);
     this._set('furyFill', 'width', `${p.fury}%`);
     this._set('enFill', 'width', `${p.energy}%`); this._set('enText', 'text', `ENERGIA ${p.energy | 0}`);
     const keys = g.input.device === 'pad' ? ['LT', 'LB'] : ['E', 'R'];
@@ -83,6 +89,8 @@ export class UI {
     const r = g.rankIndex(), rk = RANKS[r];
     $('rank').classList.toggle('on', g.combo > 1);
     this._set('rankName', 'text', rk.name); this._set('rankName', 'color', rk.color);
+    if (this._combo !== g.combo) { this._combo = g.combo; this._pop('comboNum', 'pop'); }
+    if (this._rk !== r) { if (this._rk !== undefined && r > this._rk) this._pop('rankName', 'rankPop'); this._rk = r; }
     this._set('comboNum', 'text', `${g.combo} acertos`);
     this._set('rankFill', 'width', `${Math.max(0, g.comboTimer / st.comboTime) * 100}%`);
     const b = g.boss;
@@ -93,6 +101,8 @@ export class UI {
       this._set('poiseFill', 'width', `${Math.max(0, b.poise / b.poiseMax) * 100}%`);
     }
   }
+
+  _pop(id, cls) { const el = $(id); el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
 
   /** Gamepad navigation for menus: D-pad/stick moves focus, A confirms, B goes back, Y re-rolls cards. */
   padNav(code, state) {

@@ -309,7 +309,12 @@ class Game {
     STYLE_ORDER.splice(0, STYLE_ORDER.length, ...C.styles);
     this.meta.char = id; this.saveMeta();
     P.reset(this.stats); this.ui.renderStyles(); this.ui.charInfo(C);
-    if (this.state === 'title') { P.playOnce('Chest_Pound_Taunt', 0, 1, 4.8, .3); this.audio.swap?.(C.styles[0]); }
+    if (this.state === 'title') {
+      P.playOnce('Chest_Pound_Taunt', 0, 1, 4.8, .3); this.audio.swap?.(C.styles[0]); this.audio.skillCast?.(C.styles[0]);
+      const pp = P.root.position, col = new THREE.Color(C.css).getHex();
+      this.fx.burst(pp.x, 1.1, pp.z, 40, col, 8, .09, .6, -2); this.fx.ring(pp.x, pp.z, 2.4, col, .5); this.fx.ring(pp.x, pp.z, 1.4, 0xffffff, .35);
+      this.flash(C.css, .35); P.swapGlow = .5;
+    }
   }
 
   openTree() {
@@ -615,7 +620,11 @@ class Game {
       this.shots.fire(v.x, h, v.z, a, { ...s, color, launch: s.launch });
     }
     this.audio.shoot((s.size || 1) > 1.4 || !!s.lob);
-    this.fx.impact(v.x, h, v.z, 1.1 * (s.size || 1), 0xffffff, .07);
+    // recoil: a short shove backwards and a squash, bigger for heavy shots
+    const kick = (s.size || 1) > 1.4 ? .35 : .12;
+    if (!p.airborne) { p.root.position.x -= Math.sin(face) * kick; p.root.position.z -= Math.cos(face) * kick; }
+    p.squash = Math.max(p.squash || 0, kick * .5); this.shake(kick * .5);
+    this.fx.impact(v.x, h, v.z, .55 * (s.size || 1), color, .06);
   }
 
   damageEnemy(e, base, o = {}) {
@@ -658,6 +667,7 @@ class Game {
       if (st.leech) p.heal(dmg * st.leech);
       if (st.chain && o.fromMove && Math.random() < st.chain) this.chainLightning(e, dmg * .4);
       if (o.style === 'gauntlet' && o.fromMove && Math.random() < .18 + (st.tesla || 0)) this.chainLightning(e, dmg * .35);
+      if (o.style === 'gauntlet' && o.fromMove) for (let i = 0; i < 2; i++) { const a = Math.random() * 6.28, r = .6 + Math.random() * .8; this.fx.bolt(new THREE.Vector3(e.pos.x, hy, e.pos.z), new THREE.Vector3(e.pos.x + Math.cos(a) * r, hy + (Math.random() - .3) * .9, e.pos.z + Math.sin(a) * r), Math.random() < .5 ? 0xffffff : 0x3dff8a); }
     }
     return killed;
   }
@@ -939,7 +949,7 @@ class Game {
     let target, look;
     if (this.state === 'title') {
       const a = this.time * .12;
-      target = new THREE.Vector3(pp.x + Math.sin(a) * 2 - 2.2, 2.3, pp.z + 6.5); look = new THREE.Vector3(pp.x - 1.6, 1.25, pp.z);
+      target = new THREE.Vector3(pp.x + Math.sin(a) * 1.2 - 1.5, 1.75, pp.z + 4.6); look = new THREE.Vector3(pp.x - 1.15, 1.15, pp.z);
     } else {
       // Arena-fighter camera: low, behind Eddie and off to one side, framing Eddie and the locked target.
       const L = this._lockOn(), py = Math.max(0, p.y || 0);

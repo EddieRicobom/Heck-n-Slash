@@ -31,7 +31,7 @@ export class Shots {
     if (o.rise) b.vh = o.rise;
     b.s.visible = true; b.s.material.color.set(o.color ?? 0x7fe9ff);
     const sz = .42 * (o.size || 1); b.s.scale.set(o.spear ? sz * 1.6 : sz, sz, 1);
-    g.fx.impact(x, h, z, .8 * (o.size || 1), o.color ?? 0x7fe9ff, .08);
+    g.fx.impact(x, h, z, .45 * (o.size || 1), o.color ?? 0x7fe9ff, .06);
     g.fx.spray(x, h, z, ang, 5, o.color ?? 0x7fe9ff, 9, .05);
     return b;
   }
@@ -64,7 +64,12 @@ export class Shots {
       const sp = o.speed * dt;
       b.x += Math.sin(b.ang) * sp; b.z += Math.cos(b.ang) * sp; b.h += b.vh * dt; b.dist += sp;
       b.s.position.set(b.x, g.ground(b.x, b.z) + b.h, b.z);
-      b.s.material.rotation = -b.ang;
+      { // stretch the glow along the shot's on-screen direction so it reads as a streak, not a ball
+        const cam = g.camera, a0 = this._a || (this._a = new V()), a1 = this._b || (this._b = new V());
+        a0.copy(b.s.position).project(cam); a1.set(b.x + Math.sin(b.ang), b.s.position.y + b.vh / Math.max(1, o.speed), b.z + Math.cos(b.ang)).project(cam);
+        b.s.material.rotation = b.core.material.rotation = Math.atan2((a1.y - a0.y) * innerHeight, (a1.x - a0.x) * innerWidth);
+        const sz = .42 * (o.size || 1); b.s.scale.set(sz * (o.spear ? 3.4 : 2.3), sz * .75, 1); b.core.scale.set(.75, .55, 1);
+      }
       if (Math.random() < .9) g.fx.spark(b.x, b.h, b.z, (Math.random() - .5) * .6, (Math.random() - .5) * .6, (Math.random() - .5) * .6, .22, .05 * (o.size || 1), Math.random() < .3 ? 0xffffff : c, 0);
       // contact
       const rad = .45 * (o.size || 1);
