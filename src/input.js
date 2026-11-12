@@ -12,7 +12,7 @@ export class Input {
     this.ndc = new THREE.Vector2(); this.hasMouse = false; this.ray = new THREE.Raycaster();
     this.plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); this.hit = new THREE.Vector3();
     this.device = 'kb'; this.padIndex = -1; this.padPrev = []; this.stick = new THREE.Vector2(); this.aimStick = new THREE.Vector2();
-    this.held = { L: false, H: false }; this.camYaw = 0; this.capture = null;
+    this.held = { L: false, H: false, J: false }; this.camYaw = 0; this.capture = null;
     this.setKeys({ up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', light: 'KeyJ', heavy: 'KeyK', jump: 'Space', dodge: 'ShiftLeft', skill1: 'KeyE', skill2: 'KeyR', ult: 'KeyF' });
     addEventListener('keydown', e => {
       this.device = 'kb';
@@ -20,12 +20,12 @@ export class Input {
       if (this.capture) { e.preventDefault(); const cb = this.capture; this.capture = null; cb(e.code); return; }
       this.keys.add(e.code);
       const act = this.codeAct[e.code] || (e.code === 'ShiftRight' ? 'dodge' : null);
-      if (act && PUSH[act]) { this.push(PUSH[act]); if (act === 'light') this.held.L = true; if (act === 'heavy') this.held.H = true; e.preventDefault(); }
+      if (act && PUSH[act]) { this.push(PUSH[act]); if (act === 'light') this.held.L = true; if (act === 'heavy') this.held.H = true; if (act === 'jump') this.held.J = true; e.preventDefault(); }
       if (e.code === 'Tab' || e.code === 'Space') e.preventDefault();
       this.onPress?.(e.code, e, act);
     });
-    addEventListener('keyup', e => { this.keys.delete(e.code); const a = this.codeAct[e.code]; if (a === 'light') this.held.L = false; if (a === 'heavy') this.held.H = false; });
-    addEventListener('blur', () => { this.keys.clear(); this.held.L = this.held.H = false; this.onPress?.('Blur'); });
+    addEventListener('keyup', e => { this.keys.delete(e.code); const a = this.codeAct[e.code]; if (a === 'light') this.held.L = false; if (a === 'heavy') this.held.H = false; if (a === 'jump') this.held.J = false; });
+    addEventListener('blur', () => { this.keys.clear(); this.held.L = this.held.H = this.held.J = false; this.onPress?.('Blur'); });
     canvas.addEventListener('mousedown', e => {
       this.device = 'kb';
       if (e.button === 0) { this.push('L'); this.held.L = true; } else if (e.button === 2) { this.push('H'); this.held.H = true; }
@@ -79,6 +79,7 @@ export class Input {
     if (edge(PAD.LB)) this.push('S2');
     this.held.L = now[PAD.X] || (this.device === 'kb' && this.held.L);
     this.held.H = now[PAD.Y] || (this.device === 'kb' && this.held.H);
+    this.held.J = now[PAD.A] || (this.device === 'kb' && this.held.J);
     const map = { [PAD.RB]: 'PadNext', [PAD.START]: 'PadStart', [PAD.BACK]: 'PadStart', [PAD.LEFT]: 'PadLeft', [PAD.UP]: 'PadUp', [PAD.RIGHT]: 'PadRight', [PAD.DOWN]: 'PadDown', [PAD.A]: 'PadA', [PAD.B]: 'PadB', [PAD.Y]: 'PadY' };
     for (const [i, name] of Object.entries(map)) if (edge(+i)) this.onPress?.(name);
     // left stick as menu navigation

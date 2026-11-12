@@ -206,9 +206,14 @@ export class UI {
     this.show('shop');
   }
 
-  over(title, rows, endless) {
+  over(title, rows, endless, o = {}) {
+    const scr = $('over');
+    scr.dataset.result = o.win ? 'win' : 'lose';
     $('overTitle').textContent = title;
-    $('overStats').innerHTML = rows.map(([a, b]) => `<span>${a}</span><b>${b}</b>`).join('');
+    $('overSub').textContent = o.sub || '';
+    $('overStats').innerHTML = rows.map(([a, b], i) => `<span style="animation-delay:${.35 + i * .12}s">${a}</span><b style="animation-delay:${.35 + i * .12}s">${b}</b>`).join('');
+    const gr = $('overGrade'); gr.textContent = o.grade || ''; gr.dataset.g = o.grade || ''; gr.style.animationDelay = `${.35 + rows.length * .12 + .35}s`;
+    scr.classList.remove('anim'); void scr.offsetWidth; scr.classList.add('anim');
     $('btnEndless').classList.toggle('hide', !endless);
     this.show('over');
   }

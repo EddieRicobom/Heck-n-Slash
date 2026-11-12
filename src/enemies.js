@@ -264,14 +264,24 @@ export class Enemy {
         g.ui.announceSmall('POSTURA QUEBRADA!'); g.fx.ring(this.pos.x, this.pos.z, 3, 0xffffff, .5); g.audio.shock(); g.impactFrame(this.pos.clone().setY(1.5), .12);
       }
     } else if (!this.poiseMax && this.state === 'windup' && (o.heavy || this.T.mass < 1.5)) { this.state = 'recover'; this.t = 0; this.attack = null; }
-    if (this.hp <= 0) { this.die(); return true; }
+    if (this.hp <= 0) { this.die(o); return true; }
     if (this.mixer && !this.T.boss && o.heavy && this.state === 'chase' && !this.shot) this.playClip('hit', 0);
     return false;
   }
 
-  die() {
+  die(o = {}) {
     this.alive = false; this.dieT = 0;
     const g = this.game, p = this.pos;
+    // how the body goes down depends on the blow: spiked out of the air, blasted away by a heavy hit, or crumpling
+    const air = this.y > .6, heavy = !!(o.heavy || o.launch || o.slam);
+    this.deathKind = air ? 'spike' : heavy ? 'launch' : 'crumple';
+    this.fling = {
+      a: this.lastDir ?? Math.random() * 6.28,
+      sp: this.T.boss ? 0 : air ? 3 : heavy ? 12 : 5,
+      vy: this.T.boss ? 0 : air ? -10 : heavy ? (this.mixer ? 5 : 9) : (this.mixer ? 0 : 4.5 + Math.random() * 2),
+      spin: (Math.random() - .5) * (heavy ? 26 : 14),
+    };
+    if (heavy && !this.T.boss) g.fx.spray(p.x, 1 + this.y, p.z, this.fling.a, 10, 0xffffff, 12, .05);
     g.fx.burst(p.x, 1 + this.y, p.z, this.T.boss ? 90 : 24, 0x8e3dff, 9, .12, .7);
     g.fx.burst(p.x, 1 + this.y, p.z, this.T.boss ? 40 : 10, this.eyeColor, 6, .09, .6);
     g.onEnemyKilled(this);
@@ -283,11 +293,26 @@ export class Enemy {
     this.phase += dt;
     if (!this.alive) {
       this.dieT += dt;
-      if (this.mixer) { this.mixer.update(dt); if (this.dieT > 1.1) this.pos.y -= dt * 1.2; return this.dieT > 2; }
-      if (this.flyY) this.pos.y -= dt * 4;
-      // flung away, spinning, then popping into wisps
-      const f = this.fling || (this.fling = { a: this.lastDir ?? Math.random() * 6.28, vy: 5 + Math.random() * 2, spin: (Math.random() - .5) * 18 });
-      this.pos.x += Math.sin(f.a) * 6 * dt; this.pos.z += Math.cos(f.a) * 6 * dt; this.pos.y += f.vy * dt; f.vy -= 22 * dt;
+      const f = this.fling || (this.fling = { a: this.lastDir ?? Math.random() * 6.28, sp: 5, vy: 5, spin: 10 });
+      const gy = g.ground(this.pos.x, this.pos.z), slide = f.sp * Math.exp(-this.dieT * (this.mixer ? 4 : 1.2));
+      this.pos.x += Math.sin(f.a) * slide * dt; this.pos.z += Math.cos(f.a) * slide * dt;
+      if (this.mixer) {
+        this.mixer.update(dt);
+        if (!f.down) {
+          // fall back to the ground (bodies killed in the air no longer hang there)
+          this.pos.y += f.vy * dt; f.vy -= 30 * dt;
+          if (this.pos.y <= gy && f.vy < 0) { this.pos.y = gy; f.down = true; this._thud(f); }
+        } else if (this.dieT > 1.1) {
+          // sink while dissolving into violet wisps
+          this.pos.y -= dt * 1.2;
+          const k = Math.min(1, (this.dieT - 1.1) / .6); for (const m of this.mats) m.emissive.setRGB(k * .45, k * .15, k * .9);
+          if (Math.random() < dt * 14) g.fx.wisps(this.pos.x + (Math.random() - .5) * this.r, .3, this.pos.z + (Math.random() - .5) * this.r, 1, 0x9a5cff);
+        }
+        return this.dieT > 2;
+      }
+      // flung away, spinning, bouncing once off the ground, then popping into wisps
+      this.pos.y += f.vy * dt; f.vy -= 22 * dt;
+      if (this.pos.y < gy && f.vy < 0) { this.pos.y = gy; if (!f.down) { f.down = true; f.vy = -f.vy * .35; f.sp *= .5; this._thud(f); } }
       this.root.rotation.x += f.spin * dt; this.root.rotation.z += f.spin * .6 * dt;
       if (this.dieT > .35) this.root.scale.multiplyScalar(Math.exp(-dt * 9));
       if (this.dieT > .55 && !f.pop) { f.pop = true; this.game.fx.wisps(this.pos.x, Math.max(.5, this.pos.y - this.game.ground(this.pos.x, this.pos.z)), this.pos.z, 10, 0x9a5cff); }
@@ -606,6 +631,13 @@ export class Enemy {
       P.model.rotation.x = -wind * .45 + (this.state === 'recover' && this.t < .15 ? .35 : 0) + Math.sin(ph * 10) * .05 * Math.min(1, speed / 2);
       P.model.scale.set(cfg.scale, cfg.scale * (1 - wind * .12), cfg.scale * (1 + wind * .08));
     }
+  }
+
+  /** a body hitting the floor: dust, and for spiked or blasted kills a ring and a little shake */
+  _thud(f) {
+    const g = this.game, p = this.pos, big = this.deathKind !== 'crumple';
+    g.fx.dust(p.x, p.z, big ? 10 : 4);
+    if (big) { g.fx.ring(p.x, p.z, 1.2 + this.r, 0xd9b4ff, .3); g.shake(this.deathKind === 'spike' ? .2 : .1); g.audio.land?.(); }
   }
 
   /** the body snaps back along the blow and trembles for an instant (frozen during hitstop) */

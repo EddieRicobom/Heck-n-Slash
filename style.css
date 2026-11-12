@@ -165,3 +165,24 @@ button:focus-visible,.card:focus{outline:2px solid #fff;outline-offset:3px}
 @keyframes rPop{0%{transform:scale(2.2) skewX(-12deg);filter:brightness(2.5)}100%{transform:scale(1) skewX(0)}}
 #comboNum,#rankName{transform-origin:right center;display:block}
 .screen#title::after{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--accent);box-shadow:0 0 30px var(--accent)}
+
+/* end screen: the character stays in view, the panel slams in, stats count off, the grade stamps down */
+#over{background:linear-gradient(90deg,#07050cf0 0%,#07050cc0 45%,#07050c10 75%);align-items:flex-start;padding-left:max(20px,6vw)}
+#over .panel{position:relative;background:none;border:none;border-left:4px solid var(--accent);padding:10px 0 10px 28px;max-width:520px;overflow:visible}
+#over[data-result=lose] .panel{border-left-color:var(--red)}
+#over h2{font-size:clamp(34px,4.6vw,62px);line-height:1;margin:0 0 6px;text-transform:uppercase;letter-spacing:1px;text-shadow:0 0 24px color-mix(in srgb,var(--accent) 60%,transparent),0 4px 0 #000}
+#over[data-result=lose] h2{color:#ff6a6a;text-shadow:0 0 24px #ff3a3a88,0 4px 0 #000}
+#overSub{font-style:italic;font-weight:700;opacity:.8;margin-bottom:20px;letter-spacing:1px}
+#over.anim h2{animation:overSlam .45s cubic-bezier(.2,1.5,.4,1) both}
+#over.anim #overSub{animation:overFade .4s .2s both}
+#over.anim #overStats>*{animation:overRow .3s both}
+#over.anim .menu{animation:overFade .4s 1.4s both}
+#overGrade{position:absolute;right:-30px;top:-34px;font-size:clamp(70px,9vw,130px);font-weight:900;font-style:italic;color:var(--accent);text-shadow:0 0 30px var(--accent),0 6px 0 #000;transform:rotate(-10deg);opacity:0}
+#overGrade[data-g=S]{color:#ffd23f;text-shadow:0 0 36px #ffb300,0 6px 0 #000}
+#overGrade[data-g=D]{color:#9a8fb0;text-shadow:0 6px 0 #000}
+#over.anim #overGrade{animation:gradeStamp .4s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes overSlam{0%{transform:translateX(-60px) skewX(-18deg);opacity:0}100%{transform:none;opacity:1}}
+@keyframes overFade{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:none}}
+@keyframes overRow{0%{opacity:0;transform:translateX(-14px)}100%{opacity:1;transform:none}}
+@keyframes gradeStamp{0%{opacity:0;transform:scale(3) rotate(-25deg)}100%{opacity:1;transform:scale(1) rotate(-10deg)}}
+@media (max-width:700px){#over{background:#07050cd0;align-items:center;padding-left:16px}#overGrade{right:0}}

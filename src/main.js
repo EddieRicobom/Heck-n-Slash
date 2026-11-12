@@ -542,7 +542,15 @@ class Game {
     const rows = [this.mode === 'world' ? ['Guardiões derrotados', `${this.overworld.bossesDown.size}/3`] : ['Onda alcançada', this.wave], ['Inimigos abatidos', this.kills], ['Maior combo', this.maxCombo], ['Almas levadas ao altar', '◆ ' + banked], ['Tempo', `${t / 60 | 0}m ${String(t % 60 | 0).padStart(2, '0')}s`]];
     this._won = win; if (!win) this.audio.sting('death');
     if (win) { this.player.playOnce('Victory_Cheer', 0, 1, 9.3, .3); this.runSouls = 0; }
-    this.ui.over(win ? (this.mode === 'world' ? 'A NOITE É SUA' : 'A LUA É SUA') : 'A noite venceu', rows, win && this.mode !== 'world');
+    // overall grade: progress, best combo, and the win itself
+    const prog = this.mode === 'world' ? this.overworld.bossesDown.size / 3 : Math.min(1, (win ? FINAL_WAVE : this.wave - 1) / FINAL_WAVE);
+    const score = prog * 60 + Math.min(30, this.maxCombo / 3) + (win ? 10 : 0);
+    const grade = score >= 90 ? 'S' : score >= 72 ? 'A' : score >= 52 ? 'B' : score >= 32 ? 'C' : 'D';
+    const C = CHARS[this.meta.char] || CHARS.eddie;
+    this.ui.over(win ? (this.mode === 'world' ? 'A NOITE É SUA' : 'A LUA É SUA') : 'A noite venceu', rows, win && this.mode !== 'world',
+      { win, grade, sub: win ? `${C.name} reina sob a lua` : `${C.name} caiu… desta vez` });
+    this.after(.35 + rows.length * .12 + .35, () => { this.audio.killPop(grade === 'S' || grade === 'A'); this.shake(.12); });
+    this.overT = 0;
   }
 
   onPlayerDeath() {
@@ -947,7 +955,13 @@ class Game {
     // camera
     const pp = p.root.position;
     let target, look;
-    if (this.state === 'title') {
+    if (this.state === 'over' && !this.cine) {
+      const a = p.facing + (this._won ? .55 : 1.1) + (this.overT = (this.overT || 0) + rdt) * .08, r = this._won ? 3.6 : 4.4;
+      target = new THREE.Vector3(pp.x + Math.sin(a) * r, pp.y + (this._won ? 1.5 : 2.6), pp.z + Math.cos(a) * r);
+      // aim left of the character so it stands on the right, clear of the results panel
+      const off = Math.min(1.9, innerWidth / innerHeight * .9);
+      look = new THREE.Vector3(pp.x - Math.cos(a) * off, pp.y + (this._won ? 1.2 : .5), pp.z + Math.sin(a) * off);
+    } else if (this.state === 'title') {
       const a = this.time * .12;
       target = new THREE.Vector3(pp.x + Math.sin(a) * 1.2 - 1.5, 1.75, pp.z + 4.6); look = new THREE.Vector3(pp.x - 1.15, 1.15, pp.z);
     } else {
@@ -978,7 +992,7 @@ class Game {
       look = new THREE.Vector3(f.x, fg + 1.2 + py * .55, f.z);
       this.input.camYaw = this.camYaw;
     }
-    this.camPos.lerp(target, 1 - Math.exp(-rdt * (this.state === 'title' ? 2 : 10)));
+    this.camPos.lerp(target, 1 - Math.exp(-rdt * (this.state === 'title' ? 2 : this.state === 'over' ? 2.5 : 10)));
     this.camera.position.copy(this.camPos);
     this.trauma = Math.max(0, this.trauma - rdt * 1.6);
     const sh = this.trauma * this.trauma * .45;

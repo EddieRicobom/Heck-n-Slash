@@ -442,6 +442,7 @@ export class Player {
       if (this.char.id !== 'eddie') for (let i = 0; i < 14; i++) g.fx.spark(p.x + (Math.random() - .5) * .3, this.y + .6, p.z + (Math.random() - .5) * .3, (Math.random() - .5) * 3, -8 - Math.random() * 6, (Math.random() - .5) * 3, .25, .09, [0xffffff, 0xffc65c, 0xff8a2a, 0x3dff8a][i % 4], 0);
     } else return false;
     this.airborne = true; this.state = 'free'; this.comboGrace = 0;
+    this.jumpHold = g.input.held.J; this.peakY = this.y;
     g.fx.dust(p.x, p.z, 6); g.audio.jump(); this.squash = -.16; this.ghosts(2);
     return true;
   }
@@ -514,10 +515,23 @@ export class Player {
   }
 
   _land() {
-    const g = this.game, p = this.root.position, hard = this.vy < -12;
-    this.y = 0; this.vy = 0; this.airborne = false; this.jumps = 0; this.airUsed = false; this.airSeq = ''; this.pursuit = null;
+    const g = this.game, p = this.root.position, fall = Math.max(0, (this.peakY || 0)), hard = this.vy < -12 || fall > 3.2;
+    this.y = 0; this.vy = 0; this.airborne = false; this.jumps = 0; this.airUsed = false; this.airSeq = ''; this.pursuit = null; this.peakY = 0;
     p.y = g.ground(p.x, p.z);
-    g.fx.dust(p.x, p.z, hard ? 12 : 5); this.squash = hard ? .24 : .14; g.audio.land();
+    g.fx.dust(p.x, p.z, hard ? 12 : 5); this.squash = hard ? .24 : .08 + Math.min(.08, fall * .03); g.audio.land();
+    if (hard && this.state === 'free') {
+      const mv = g.input.moveVec();
+      if (mv.lengthSq() > .25) {
+        // roll out of the fall and keep running
+        this.facing = Math.atan2(mv.x, mv.z); this.root.rotation.y = this.facing;
+        this.playOnce('Roll_Dodge', .14, .6, .38, .04); this.vel.set(mv.x * 9, 0, mv.z * 9); this.sprint = true; this.runT = 0;
+        this.squash = .1; g.fx.spray(p.x, .2, p.z, this.facing + Math.PI, 8, 0xd8ccef, 7, .05);
+      } else {
+        // hero landing: crouch hard, the ground ring and a small crack
+        this.squash = .32; this.vel.set(0, 0, 0);
+        g.fx.ring(p.x, p.z, 2.2, 0xffffff, .3); g.fx.scorch?.(p.x, p.z, .9); g.shake(.18); g.input.rumble?.(.3, .5, 90);
+      }
+    }
     if (this.state === 'attack' && this.move.plunge) {
       g.resolveHit(this.move.hits[0], this.move); this.hitIdx = this.move.hits.length;
       this.moveT = Math.max(this.moveT, this.move.landT);
@@ -537,8 +551,12 @@ export class Player {
       if (this.vy < 0) this.game.fx.spark(p.x, this.y + 1, p.z, 0, 3, 0, .3, .12, this.styleDef.color, 0);
     } else if (this.state === 'dodge') { this.vy = 0; }
     else {
-      this.vy = Math.max(-17, this.vy - (this.vy > 0 ? 22 : 17) * dt);
-      this.y += this.vy * dt;
+      // tap = short hop, hold = full jump; gravity eases off around the apex so the peak hangs a beat
+      const cut = this.vy > 0 && this.jumps === 1 && !this.pursuit && this.jumpHold && !this.game.input.held.J;
+      let grav = this.vy > 0 ? (cut ? 52 : 22) : 17;
+      if (Math.abs(this.vy) < 2.5) grav *= .55;
+      this.vy = Math.max(-17, this.vy - grav * dt);
+      this.y += this.vy * dt; this.peakY = Math.max(this.peakY || 0, this.y);
       if (this.pursuit && this.vy > 0) {
         const t = this.pursuit.pos;
         p.x += (t.x - p.x) * Math.min(1, dt * 5); p.z += (t.z - p.z) * Math.min(1, dt * 5);
