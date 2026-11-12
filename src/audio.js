@@ -1,7 +1,8 @@
 import { Music } from './music.js';
 // Procedural sound design: every effect is synthesized in layers (transient + body + tail) and
 // sent through a generated reverb, so the game ships no audio files.
-const STYLE_TONE = { claws: 1.35, katana: 1, hammer: .55 };
+const STYLE_TONE = { claws: 1.35, katana: 1, hammer: .55, gauntlet: 1.1, glaive: .85, cannon: .7 };
+const ROOT = { claws: 52, katana: 57, hammer: 45, gauntlet: 50, glaive: 55, cannon: 47 };
 
 export class Audio2 {
   constructor() { this.ctx = null; this.muted = false; this._int = 0; this.bossMusic = false; this._soulStreak = 0; this._soulT = 0; }
@@ -105,12 +106,14 @@ export class Audio2 {
     const k = STYLE_TONE[style] || 1, d = heavy ? .28 : .16;
     this._noise({ dur: d, f0: 500 * k, f1: 5200 * k, q: 2.2, vol: heavy ? .32 : .22, attack: d * .45, verb: .1 });
     this._noise({ dur: d * .9, f0: 3800 * k, f1: 900 * k, q: 3, vol: .08, attack: d * .5, delay: .02, verb: 0 });
-    if (style === 'katana') this._tone({ f0: 3100, f1: 2500, dur: .12, vol: .035, type: 'sine', delay: d * .4, verb: .3 });
+    if (style === 'katana' || style === 'glaive') this._tone({ f0: 3100, f1: 2500, dur: .12, vol: .035, type: 'sine', delay: d * .4, verb: .3 });
     if (style === 'hammer') this._noise({ dur: .3, type: 'lowpass', f0: 180, f1: 700, q: 1, vol: .35, attack: .15, verb: 0 });
   }
 
   hit(heavy, style, crit) {
-    const h = heavy ? 1 : 0, root = { claws: 52, katana: 57, hammer: 45 }[style] || 52;
+    const h = heavy ? 1 : 0, root = ROOT[style] || 52;
+    if (style === 'glaive') style = 'katana';
+    if (style === 'gauntlet') this._metal(900 + Math.random() * 200, .2, .05 + h * .03);
     if (heavy) { this.gtr(root, .32, .34); this.kickDrum(.6); this.crash(.12); } else { this.gtr(root + (Math.random() < .5 ? 0 : 3), .09, .2, true); this.snareDrum(.18); }
     this._noise({ dur: .03, type: 'highpass', f0: 3000, f1: 2000, vol: .4, verb: 0 }); // transient
     if (style === 'katana') {
@@ -129,7 +132,9 @@ export class Audio2 {
     if (crit) { this.squeal(1760 + Math.random() * 400); this._tone({ f0: 2093, f1: 2093, dur: .22, vol: .08, verb: .5 }); this._tone({ f0: 3136, f1: 3136, dur: .18, vol: .05, delay: .03, verb: .5 }); }
   }
 
-  skillCast(style) { const r = { claws: 52, katana: 57, hammer: 45 }[style] || 52; this.gtr(r, .6, .32, false, 0); this.gtr(r + 5, .5, .26, false, 0, .18); this.crash(.18, .18); this.squeal(1500, .25); const k = { claws: 1.3, katana: 1, hammer: .6 }[style] || 1; this._tone({ f0: 200 * k, f1: 800 * k, dur: .35, vol: .12, type: 'sawtooth', verb: .5, attack: .08 }); this._noise({ dur: .4, f0: 600, f1: 5000, q: 1.2, vol: .14, attack: .15, verb: .4 }); }
+  /** plasma shot: a laser zap plus a short distorted guitar stab on big ones */
+  shoot(big) { this._tone({ f0: big ? 900 : 1500, f1: big ? 90 : 240, dur: big ? .35 : .12, vol: big ? .2 : .1, type: 'sawtooth', verb: .2 }); this._noise({ dur: big ? .3 : .08, f0: 3000, f1: 600, q: 1.5, vol: big ? .25 : .1, verb: .15 }); if (big) this.gtr(47, .25, .22); }
+  skillCast(style) { const r = ROOT[style] || 52; this.gtr(r, .6, .32, false, 0); this.gtr(r + 5, .5, .26, false, 0, .18); this.crash(.18, .18); this.squeal(1500, .25); const k = { claws: 1.3, katana: 1, hammer: .6 }[style] || 1; this._tone({ f0: 200 * k, f1: 800 * k, dur: .35, vol: .12, type: 'sawtooth', verb: .5, attack: .08 }); this._noise({ dur: .4, f0: 600, f1: 5000, q: 1.2, vol: .14, attack: .15, verb: .4 }); }
   jump() { this._noise({ dur: .12, type: 'highpass', f0: 7000, f1: 6000, vol: .07, verb: 0 }); }
   _jumpOld() { this._noise({ dur: .22, f0: 400, f1: 1800, q: .9, vol: .16, attack: .03, verb: .1 }); this._tone({ f0: 220, f1: 440, dur: .12, vol: .05, type: 'triangle', verb: .2 }); }
   bleed() { this._noise({ dur: .07, f0: 900, f1: 500, q: 6, vol: .06, verb: 0 }); }
@@ -144,7 +149,7 @@ export class Audio2 {
   _hurtOld() { this._tone({ f0: 330, f1: 90, dur: .28, vol: .45, type: 'sawtooth', verb: .1, dist: true }); this._noise({ dur: .18, type: 'lowpass', f0: 1800, f1: 200, vol: .45 }); }
   shock() { this._tone({ f0: 95, f1: 26, dur: .65, vol: .9, verb: .4 }); this._noise({ dur: .55, type: 'lowpass', f0: 2200, f1: 70, vol: .6, verb: .45, dist: true }); this._noise({ dur: .35, f0: 500, f1: 4000, q: .8, vol: .12, delay: .05 }); }
   explode() { this._tone({ f0: 80, f1: 22, dur: .8, vol: 1, verb: .5 }); this._noise({ dur: .9, type: 'lowpass', f0: 4200, f1: 60, vol: .8, verb: .6, dist: true }); this._noise({ dur: .25, type: 'highpass', f0: 3000, f1: 1500, vol: .2 }); }
-  swap(style) { const r = { claws: 52, katana: 57, hammer: 45 }[style] || 52; this.gtr(r - 5, .22, .22, false, 5); }
+  swap(style) { const r = ROOT[style] || 52; this.gtr(r - 5, .22, .22, false, 5); }
   _swapOld(style) {
     const k = STYLE_TONE[style] || 1;
     this._noise({ dur: .14, f0: 1500 * k, f1: 6000 * k, q: 4, vol: .14, attack: .06 });

@@ -29,9 +29,9 @@ def fetch():
     [t.join() for t in ths]
 
 
-def pack():
+def pack(raw=RAW, name="anims.json"):
     out = {}
-    for f in sorted(RAW.glob("batch*.glb")):
+    for f in sorted(raw.glob("batch*.glb")):
         j, b = load(f)
         rest = next(n for n in j["nodes"] if n.get("name") == "Hips").get("translation", [0, 0, 0])
         for a in j["animations"]:
@@ -55,7 +55,7 @@ def pack():
                                "v": [round(float(x), 4) for x in v.ravel()]})
             out[a["name"]] = {"d": round(float(times[-1]), 3), "tracks": tracks}
     (GAME / "assets").mkdir(exist_ok=True)
-    p = GAME / "assets" / "anims.json"
+    p = GAME / "assets" / name
     p.write_text(json.dumps(out, separators=(",", ":")))
     print("clips", len(out), f"{p.stat().st_size / 1e6:.2f} MB")
     for k, v in out.items():

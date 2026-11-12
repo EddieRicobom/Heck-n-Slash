@@ -10,7 +10,9 @@ import { Overworld } from './overworld.js';
 import { Skills } from './skills.js';
 import { loadSettings, saveSettings, defaults as settingsDefaults } from './settings.js';
 import { WATER } from './terrain.js';
-import { STYLES, STYLE_ORDER, RANKS, RARITY, UPGRADES, SHOP, WAVES, FINAL_WAVE, endlessWave } from './data.js';
+import { STYLES, STYLE_ORDER, RANKS, RARITY, UPGRADES, SHOP, WAVES, FINAL_WAVE, endlessWave, CHARS, TREE } from './data.js';
+import { Shots } from './shots.js';
+import './skills_tigress.js';
 import { createWorld, ARENA } from './world.js';
 import { FX } from './fx.js';
 import { Audio2 } from './audio.js';
@@ -23,7 +25,7 @@ const STORE = 'eddie_presas_v1';
 import { BIOMES } from './terrain.js';
 function g_ember(g, pp) { const a = Math.random() * 6.28, r = 3 + Math.random() * 16; g.fx.spark(pp.x + Math.cos(a) * r, Math.random() * 1.5, pp.z + Math.sin(a) * r, (Math.random() - .5) * .8, 1 + Math.random() * 1.5, (Math.random() - .5) * .8, 2.2, .06 + Math.random() * .05, Math.random() < .5 ? 0xff7a2a : 0xffc65c, -.6); }
 const BIOMES_NAME = Object.fromEntries(Object.entries(BIOMES).map(([k, v]) => [k, v.name]));
-const loadMeta = () => { try { return { souls: 0, best: 0, shop: {}, ...JSON.parse(localStorage.getItem(STORE) || '{}') }; } catch { return { souls: 0, best: 0, shop: {} }; } };
+const loadMeta = () => { try { return { souls: 0, best: 0, shop: {}, tree: {}, char: 'eddie', ...JSON.parse(localStorage.getItem(STORE) || '{}') }; } catch { return { souls: 0, best: 0, shop: {}, tree: {}, char: 'eddie' }; } };
 const angDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
 
 class Game {
@@ -65,8 +67,10 @@ class Game {
     toonify(this.scene);
     this.stats = baseStats();
     fixNormals(gltf.scene);
-    this.player = new Player(this, gltf, buildClips(anims));
+    this.player = new Player(this, gltf, buildClips(anims), CHARS.eddie);
+    this.players = { eddie: this.player };
     this.skills = new Skills(this);
+    this.shots = new Shots(this);
     this.mood = 0; this.moodTarget = 0;
     this.scene.add(this.player.root);
     this.enemies = new Enemies(this);
@@ -77,6 +81,8 @@ class Game {
     this.camYaw = 0; this.camFocus = new THREE.Vector3(); this.camDist = 7.2; this.camH = 3.1;
     this._bind();
     this.applySettings();
+    if (this.meta.char && this.meta.char !== 'eddie') await this.selectChar(this.meta.char).catch(err => console.warn('character failed to load', err));
+    this.ui.charInfo(this.player.char);
     this.toTitle();
     this.last = performance.now();
     this.fpsAcc = 0; this.fpsN = 0; this.lowFps = 0;
@@ -183,6 +189,8 @@ class Game {
     click('btnTrain', () => this.startTraining());
     click('btnWorld', () => this.startWorld());
     click('btnShop', () => this.openShop());
+    click('btnTree', () => this.openTree());
+    click('btnChar', () => this.selectChar(this.player.char.id === 'eddie' ? 'tigress' : 'eddie'));
     click('btnHow', () => this.ui.show('how'));
     click('btnOpts', () => this.openOptions('title'));
     click('btnPauseOpts', () => this.openOptions('pause'));
@@ -202,9 +210,9 @@ class Game {
         const cyc = d => this.player.setStyle(STYLE_ORDER[(STYLE_ORDER.indexOf(this.player.style) + d + 3) % 3]);
         if (code === 'PadNext') cyc(1);
         if (code === 'PadPrev') cyc(-1);
-        if (code === 'PadLeft') this.player.setStyle('claws');
-        if (code === 'PadUp') this.player.setStyle('katana');
-        if (code === 'PadRight') this.player.setStyle('hammer');
+        if (code === 'PadLeft') this.player.setStyle(STYLE_ORDER[0]);
+        if (code === 'PadUp') this.player.setStyle(STYLE_ORDER[1]);
+        if (code === 'PadRight') this.player.setStyle(STYLE_ORDER[2]);
       } else if (code.startsWith('Pad')) this.ui.padNav(code, this.state);
       if (code === 'KeyM') this.audio.toggleMute();
       if (this.training && this.state === 'play') { if (code === 'Backspace') this.resetDps(); if (code === 'KeyT') this.spawnDummy(); }
@@ -279,8 +287,41 @@ class Game {
     });
   }
 
+  /** switch the playable character, loading her model, clips and weapons the first time */
+  async selectChar(id) {
+    const C = CHARS[id];
+    if (!C || this._charBusy) return;
+    if (!this.players[id]) {
+      this._charBusy = true;
+      this.ui.announce('CARREGANDO', C.name, 6000);
+      try {
+        const loader = new GLTFLoader();
+        const [gltf, anims] = await Promise.all([loader.loadAsync(C.model), fetch(C.anims).then(r => { if (!r.ok) throw new Error(C.anims + ' ' + r.status); return r.json(); })]);
+        await Promise.all(C.styles.filter(w => !this.weaponAssets[w]).map(w => loader.loadAsync(`assets/weapons/${w}.glb`).then(g => { fixNormals(g.scene); this.weaponAssets[w] = g.scene; }).catch(() => null)));
+        fixNormals(gltf.scene);
+        this.players[id] = new Player(this, gltf, buildClips(anims), C);
+        this.scene.add(this.players[id].root); this.players[id].setActive(false);
+      } finally { this._charBusy = false; }
+      this.ui.announce('', '', 10);
+    }
+    const old = this.player, P = this.players[id];
+    if (old !== P) { old.setActive(false); P.setActive(true); P.root.position.copy(old.root.position); this.player = P; }
+    STYLE_ORDER.splice(0, STYLE_ORDER.length, ...C.styles);
+    this.meta.char = id; this.saveMeta();
+    P.reset(this.stats); this.ui.renderStyles(); this.ui.charInfo(C);
+    if (this.state === 'title') { P.playOnce('Chest_Pound_Taunt', 0, 1, 4.8, .3); this.audio.swap?.(C.styles[0]); }
+  }
+
+  openTree() {
+    this.ui.tree(this.meta, TREE, id => {
+      const n = TREE.find(x => x.id === id), T = this.meta.tree ||= {};
+      if (T[id] || this.meta.souls < n.cost || !n.req.every(r => T[r])) return;
+      this.meta.souls -= n.cost; T[id] = true; this.saveMeta(); this.audio.card(); this.openTree();
+    });
+  }
+
   toTitle() {
-    this.leaveWorld(); if (this.cine) this.endCine(); this.skills?.clear(); this.moodTarget = 0; this.mood = 0;
+    this.leaveWorld(); if (this.cine) this.endCine(); this.skills?.clear(); this.shots?.clear(); this.moodTarget = 0; this.mood = 0;
     this.training = false; document.getElementById('trainPanel').classList.add('hide');
     this.state = 'title'; this.enemies.clear(); this.fx.clearTelegraphs(); this.boss = null;
     this.player.reset(this.stats); this.player.playOnce('Chest_Pound_Taunt', 0, 1, 4.8, .3);
@@ -371,16 +412,19 @@ class Game {
   }
 
   startRun() {
-    if (this.cine) this.endCine(); this.skills?.clear(); this.moodTarget = 0;
+    if (this.cine) this.endCine(); this.skills?.clear(); this.shots?.clear(); this.moodTarget = 0;
     this._won = false;
     this.mode = this.mode === 'world' ? 'world' : 'arena';
     this.training = false; document.getElementById('trainPanel').classList.add('hide');
     const sh = this.meta.shop, st = this.stats = baseStats();
     st.maxHp += 10 * (sh.vida || 0); st.dmg += .05 * (sh.dano || 0); st.soul += .1 * (sh.almas || 0);
+    const tree = this.player.char.id === 'tigress' ? TREE.filter(n => this.meta.tree?.[n.id]) : [];
+    for (const n of tree) n.apply?.(st);
     this.rerolls = sh.reroll || 0; this.cardCount = 3 + (sh.escolha || 0);
     this.enemies.clear(); this.fx.clearTelegraphs(); this.timers = [];
     this.player.reset(st);
-    this.player.fury = sh.furia ? 50 : 0;
+    this.player.fury = Math.max(sh.furia ? 50 : 0, st.startFury || 0);
+    for (const n of tree) if (n.unlock) this.player.unlocked.add(n.unlock);
     const locked = this.lockedMoves();
     for (let i = 0; i < (sh.combo || 0) && locked.length; i++) { const m = locked.splice(Math.random() * locked.length | 0, 1)[0]; this.player.unlocked.add(m.style + ':' + m.seq); }
     this.picked = []; this.stacks = {};
@@ -436,7 +480,7 @@ class Game {
 
   lockedMoves() {
     const out = [];
-    for (const id of STYLE_ORDER) for (const m of Object.values(STYLES[id].moves)) if (m.locked && !this.player.unlocked.has(id + ':' + m.seq)) out.push(m);
+    for (const id of STYLE_ORDER) for (const m of Object.values(STYLES[id].moves)) if (m.locked && !m.tree && !this.player.unlocked.has(id + ':' + m.seq)) out.push(m);
     return out;
   }
 
@@ -520,7 +564,17 @@ class Game {
     const color = move.seq === 'F' ? 0xe9d2ff : style.color;
     const face = p.facing;
     const PW = p.power || 0, sy = p.y + 1.05;
-    this.fx.slash(new THREE.Vector3(pos.x, sy, pos.z), face, hit.range * (1.05 + PW * .25), THREE.MathUtils.degToRad(Math.min(hit.arc + 20, 360)), hit.roll || 0, hit.dir || 1, color, (hit.heavy ? .26 : .18) * (1 + PW * .5));
+    if (style.id === 'glaive' && st.reach !== 1) hit = { ...hit, range: hit.range * st.reach };
+    if (hit.pull) {
+      for (const e of this.enemies.list) {
+        if (!e.alive || e.state === 'spawn' || e.T.boss) continue;
+        const dx = pos.x - e.pos.x, dz = pos.z - e.pos.z, d = Math.hypot(dx, dz);
+        if (d < hit.pull && d > 1.2) { e.pos.x += dx / d * (d - 1.2); e.pos.z += dz / d * (d - 1.2); this.fx.bolt(new THREE.Vector3(pos.x, 1.2, pos.z), new THREE.Vector3(e.pos.x, 1.1, e.pos.z), color); }
+      }
+      this.fx.ring(pos.x, pos.z, hit.pull, color, .35);
+    }
+    if (hit.shot) this.fireShots(hit, move, face, color);
+    else this.fx.slash(new THREE.Vector3(pos.x, sy, pos.z), face, hit.range * (1.05 + PW * .25), THREE.MathUtils.degToRad(Math.min(hit.arc + 20, 360)), hit.roll || 0, hit.dir || 1, color, (hit.heavy ? .26 : .18) * (1 + PW * .5));
     if (PW > .75) this.fx.slash(new THREE.Vector3(pos.x, sy, pos.z), face, hit.range * (.8 + PW * .2), THREE.MathUtils.degToRad(Math.min(hit.arc + 10, 360)), (hit.roll || 0) + .25, hit.dir || 1, 0xffffff, .14 + PW * .1);
     let any = false;
     for (const e of this.enemies.list) {
@@ -548,7 +602,20 @@ class Game {
       this.input.rumble(heavy ? .5 : .25, heavy ? .8 : .1, heavy ? 140 : 60);
       if (heavy) this.fovKick = Math.max(this.fovKick, hit.slam ? 4 : 2.5);
       if (move.fin || hit.slam) this.aberr(.6);
-    } else if (move.seq !== 'F') this.audio._noise({ dur: .05, f0: 900, f1: 500, vol: .03, verb: 0 });
+    } else if (move.seq !== 'F' && !hit.shot) this.audio._noise({ dur: .05, f0: 900, f1: 500, vol: .03, verb: 0 });
+  }
+
+  /** plasma shots leave the cannon's muzzle (or her chest for other styles) */
+  fireShots(hit, move, face, color) {
+    const p = this.player, s = hit.shot, n = s.n || 1, v = new THREE.Vector3(), mz = p.wSets?.cannon?.[0];
+    if (p.style === 'cannon' && mz) { mz.localToWorld(v.set(0, .32, 0)); } else v.set(p.root.position.x, this.ground(p.root.position.x, p.root.position.z) + p.y + 1.3, p.root.position.z);
+    const h = Math.max(.4, v.y - this.ground(v.x, v.z));
+    for (let i = 0; i < n; i++) {
+      const a = face + (n > 1 ? (i - (n - 1) / 2) * (s.spread || .2) : (Math.random() - .5) * (s.spread || 0));
+      this.shots.fire(v.x, h, v.z, a, { ...s, color, launch: s.launch });
+    }
+    this.audio.shoot((s.size || 1) > 1.4 || !!s.lob);
+    this.fx.impact(v.x, h, v.z, 1.1 * (s.size || 1), 0xffffff, .07);
   }
 
   damageEnemy(e, base, o = {}) {
@@ -566,6 +633,7 @@ class Game {
     this._lastCrit = crit;
     dmg *= .9 + Math.random() * .2;
     const bleed = o.bleed || (o.style === 'claws' && o.fromMove ? 2.2 : 0);
+    if (o.style === 'glaive' && e.y > .35) dmg *= 1.2;
     const killed = e.hurt(dmg, { ...o, bleed });
     const hy = 1 + e.y + (e.T.boss ? 1.4 : 0);
     this.fx.number(e.pos.x, 1 + hy, e.pos.z, juggle ? `${Math.round(dmg)} ↑` : dmg, crit, crit ? '' : o.color === 0xffffff ? '#fff' : null);
@@ -589,6 +657,7 @@ class Game {
       p.lastHit = p.time;
       if (st.leech) p.heal(dmg * st.leech);
       if (st.chain && o.fromMove && Math.random() < st.chain) this.chainLightning(e, dmg * .4);
+      if (o.style === 'gauntlet' && o.fromMove && Math.random() < .18 + (st.tesla || 0)) this.chainLightning(e, dmg * .35);
     }
     return killed;
   }
@@ -849,7 +918,7 @@ class Game {
       this._mood(dt);
       if (this.training) this._trainingUpdate(); else if (this.mode === 'world') this._worldUpdate(dt); else this._spawner(dt);
       this._checkWave();
-      this._updateWaves(dt);
+      this._updateWaves(dt); this.shots.update(dt);
       this._updateSouls(dt);
       if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.combo = 0; }
       this.audio.intensity = Math.min(1, this.enemies.alive / 12 + this.rankIndex() * .15); this.audio.bossMusic = !!(this.boss && this.boss.alive);
@@ -964,7 +1033,7 @@ game.init().then(() => {
   if (!q.has('demo')) return;
   game.startRun(); game.stats.armor = .2;
   if (q.get('w')) { game.timers = []; game.enemies.clear(); game.wave = +q.get('w') - 1; game.nextWave(); }
-  game.player.setStyle(q.get('demo') || 'claws');
+  game.player.setStyle(q.get('demo') || STYLE_ORDER[0]);
   autopilot(game, +(q.get('f') || 600));
   if (q.has('freeze')) { game.renderer.setAnimationLoop(null); game.step(1); }
 }).catch(err => {

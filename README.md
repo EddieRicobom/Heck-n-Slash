@@ -14,6 +14,13 @@ Também dá para rodar manualmente:
 python tools/serve.py 8765
 ```
 
+## Personagens
+
+Troque de personagem no menu inicial.
+
+- **Eddie Wolfunny**: Garras, Katana e Martelo. Melhorias permanentes no Altar das Almas.
+- **Tigresa de Titânio** (opcional): ciborgue com Manoplas elétricas, Glaive de longo alcance e Canhão de plasma. Ela tem técnicas próprias, o golpe final Protocolo Ômega e a Árvore de Titânio, uma árvore de habilidades comprada com almas que libera combos e fortalece cada arma.
+
 ## Modos
 
 - **Explorar o Mundo**: mapa aberto de 380 m com 7 regiões, 34 acampamentos, baús, santuários e 3 guardiões.

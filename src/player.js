@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STYLES, STYLE_ORDER, SPECIAL } from './data.js';
+import { STYLES, STYLE_ORDER, SPECIAL, CHARS } from './data.js';
 import { ARENA } from './world.js';
 
 import { Trail } from './fx.js';
@@ -23,12 +23,12 @@ export function buildClips(json) {
 }
 
 export function baseStats() {
-  return { maxHp: 100, dmg: 1, speed: 1, atk: 1, crit: .05, critMult: 1.8, leech: 0, armor: 1, dodges: 2, shock: 1, bleed: 1, fury: 1, soul: 1, magnet: 3, comboTime: 3, rankBonus: 0, chain: 0, ghost: false, swapNova: false, instinct: false, execute: false, revive: 0 };
+  return { tesla: 0, reach: 1, pierce: 0, skillPow: { gauntlet: 1, glaive: 1, cannon: 1 }, ultPow: 1, energyRegen: 1, startFury: 0, maxHp: 100, dmg: 1, speed: 1, atk: 1, crit: .05, critMult: 1.8, leech: 0, armor: 1, dodges: 2, shock: 1, bleed: 1, fury: 1, soul: 1, magnet: 3, comboTime: 3, rankBonus: 0, chain: 0, ghost: false, swapNova: false, instinct: false, execute: false, revive: 0 };
 }
 
 export class Player {
-  constructor(game, gltf, clips) {
-    this.game = game;
+  constructor(game, gltf, clips, char = CHARS.eddie) {
+    this.game = game; this.char = char;
     this.root = new THREE.Group();
     this.model = gltf.scene;
     this.root.add(this.model);
@@ -39,8 +39,8 @@ export class Player {
       if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; }
     });
     // lift the very dark fur a little so Eddie reads against the night arena
-    const mat = this.mesh.material = toon(this.mesh.material, {}, 0x6a4aa8);
-    if (mat.map) { mat.emissiveMap = mat.map; mat.emissive = new THREE.Color(0x3a3a3a); }
+    const mat = this.mesh.material = toon(this.mesh.material, {}, char.rim);
+    if (mat.map) { mat.emissiveMap = mat.map; mat.emissive = new THREE.Color(char.id === 'eddie' ? 0x3a3a3a : 0x1c1c1c); }
     mat.side = THREE.FrontSide;
     this._outline();
     this.model.updateMatrixWorld(true);
@@ -56,14 +56,21 @@ export class Player {
     this.reset(game.stats);
   }
 
+  /** switching characters: the inactive one leaves the scene along with its trails and afterimages */
+  setActive(on) {
+    this.root.visible = on;
+    for (const list of Object.values(this.trails || {})) for (const tr of list) { tr.t.mesh.visible = on; tr.t.alpha = 0; tr.t.pts.length = 0; }
+    for (const gh of this._ghostPool || []) gh.m.visible = false;
+  }
+
   reset(stats) {
     this.stats = stats;
     this.hp = stats.maxHp; this.fury = 0; this.dead = false;
     this.state = 'free'; this.t = 0; this.seq = ''; this.comboGrace = 0;
-    this.style = 'claws'; this.vel = new V(); this.facing = Math.PI; this.dodgeCharge = stats.dodges;
+    this.style = this.char.styles[0]; this.vel = new V(); this.facing = Math.PI; this.dodgeCharge = stats.dodges;
     this.iframe = 0; this.moonT = 0; this.critT = 0; this.swapBuff = 0; this.lastHit = -9; this.time = 0; this.dodgeEnd = -9; this.counterT = 0; this.counter = false;
     this.y = 0; this.vy = 0; this.airborne = false; this.jumps = 0; this.airUsed = false; this.airSeq = ''; this.pursuit = null; this.lastLaunch = -9; this.hoverY = null; this.swapGlow = 0;
-    this.wScale = { claws: 1, katana: 0, hammer: 0 };
+    this.wScale = Object.fromEntries(this.char.styles.map((s, i) => [s, i ? 0 : 1]));
     this.energy = 60; this.skillCd = {}; this.skill = null;
     this.root.position.set(0, 0, 0); this.root.rotation.y = this.facing;
     this.unlocked = new Set();
@@ -112,6 +119,7 @@ export class Player {
   }
 
   _weapons() {
+    if (this.char.id !== 'eddie') return this._tigressWeapons();
     const glow = (c, i = 1) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: i, roughness: .3, metalness: .2 });
     const steel = new THREE.MeshStandardMaterial({ color: 0xdde6f0, metalness: .9, roughness: .22, emissive: 0x2a6f80, emissiveIntensity: .5 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x1b1622, roughness: .6, metalness: .4 });
@@ -149,6 +157,73 @@ export class Player {
     this.wHammer = [this._attach('RightHand', h, fwd, .05)];
     const A = this.game.weaponAssets;
     if (A?.katana && A?.hammer && A?.claws) this._meshyWeapons(A, new V(0, .25, -1).normalize());
+    this.wSets = { claws: this.wClaws, katana: this.wKatana, hammer: this.wHammer };
+    const cfg = (list, grip, trail, tip) => list.forEach(g => Object.assign(g.userData, { grip, trail, tip }));
+    cfg(this.wKatana, { lift: 1, lean: .45, along: .04 }, this.meshyWeapons ? [.3, 1.14] : [.3, 1.23], [.4, 1.1]);
+    cfg(this.wHammer, { lift: 1.3, lean: .3, along: .04 }, this.meshyWeapons ? [.72, 1.02] : [.66, 1.12], [.85, .85]);
+    cfg(this.wClaws, { arm: true, along: -.05 }, this.meshyWeapons ? [.14, .34] : [.06, .34], [.3, .3]);
+  }
+
+  /** shared look for Meshy weapon models: toon shaded, inked, tinted by the style */
+  _weaponModel(style, scene, mirror = false) {
+    const holder = new THREE.Group(), model = scene;
+    if (mirror) model.scale.x *= -1;
+    const mats = [];
+    model.traverse(o => { if (o.isMesh) { o.material = toon(o.material); o.material.emissive = new THREE.Color(STYLES[style].color); o.material.userData.ei = .12; o.material.emissiveIntensity = .12; mats.push(o.material); o.castShadow = true; } });
+    holder.add(model);
+    outline(holder, .012);
+    return { holder, mats };
+  }
+
+  _weaponGlow(g, mats, style, glowY, glowSize) {
+    const glowTex = Player._glowTex || (Player._glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.3, 'rgba(255,255,255,.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })());
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: STYLES[style].color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
+    s.position.y = glowY; s.visible = false; g.add(s);
+    Object.assign(g.userData, { glow: s, glowSize, mats, base: 1 });
+  }
+
+  /** a Meshy model fitted to a length along +Y, with its grip point (fraction of the length from the bottom) at the origin */
+  static fit(scene, len, grip = .5, flip = false, axis = null) {
+    const m = scene.clone(true), box = new THREE.Box3().setFromObject(m), size = box.getSize(new V()), c = box.getCenter(new V());
+    const ax = axis || (size.x >= size.y && size.x >= size.z ? 'x' : size.z >= size.y ? 'z' : 'y');
+    const g = new THREE.Group(), inner = new THREE.Group(); inner.add(m); g.add(inner);
+    m.position.sub(c);
+    if (ax === 'x') inner.rotation.z = flip ? -Math.PI / 2 : Math.PI / 2; else if (ax === 'z') inner.rotation.x = flip ? Math.PI / 2 : -Math.PI / 2; else if (flip) inner.rotation.z = Math.PI;
+    g.scale.setScalar(len / size[ax]);
+    g.position.y = (.5 - grip) * len;
+    const out = new THREE.Group(); out.add(g); return out;
+  }
+
+  /** the Tigress: twin gauntlets, a glaive and a forearm plasma cannon (Meshy models when available) */
+  _tigressWeapons() {
+    const A = this.game.weaponAssets || {}, glow = (c, i = 1) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: i, roughness: .3, metalness: .2 });
+    const ti = new THREE.MeshStandardMaterial({ color: 0xe8edf2, metalness: .8, roughness: .3 }), fwd = new V(0, .25, -1).normalize();
+    const prim = {
+      gauntlet: () => { const g = new THREE.Group(); const b = new THREE.Mesh(new THREE.BoxGeometry(.13, .16, .13), ti); const c = new THREE.Mesh(new THREE.SphereGeometry(.035, 8, 6), glow(0x3dff8a, 2)); c.position.set(0, .02, .07); g.add(b, c); return g; },
+      glaive: () => { const g = new THREE.Group(); const s = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, 1.7, 6), ti); s.position.y = .35; const b = new THREE.Mesh(new THREE.ConeGeometry(.08, .55, 4), glow(0xff8a2a, 1.4)); b.position.y = 1.45; b.scale.set(.4, 1, 1); g.add(s, b); return g; },
+      cannon: () => { const g = new THREE.Group(); const s = new THREE.Mesh(new THREE.CylinderGeometry(.08, .1, .42, 10), ti); const r = new THREE.Mesh(new THREE.TorusGeometry(.085, .02, 6, 14), glow(0x7fe9ff, 2)); r.rotation.x = Math.PI / 2; r.position.y = .2; g.add(s, r); return g; },
+    };
+    const F = this.char.fit || {};
+    const build = (style, mirror = false) => {
+      const f = F[style];
+      if (A[style] && f) return this._weaponModel(style, Player.fit(A[style], f.len, f.grip, f.flip, f.axis), mirror);
+      const h = new THREE.Group(), m = prim[style](); if (mirror) m.scale.x = -1; h.add(m); outline(h, .012);
+      const mats = []; m.traverse(o => { if (o.isMesh) mats.push(o.material); });
+      return { holder: h, mats };
+    };
+    const gr = build('gauntlet'), gl = build('gauntlet', true), gv = build('glaive'), cn = build('cannon');
+    this.wSets = {
+      gauntlet: [this._attach('RightHand', gr.holder, 'arm', .02), this._attach('LeftHand', gl.holder, 'arm', .02)],
+      glaive: [this._attach('RightHand', gv.holder, fwd, .04)],
+      cannon: [this._attach('RightHand', cn.holder, 'arm', .02)],
+    };
+    this._weaponGlow(this.wSets.gauntlet[0], gr.mats, 'gauntlet', .05, .8); this._weaponGlow(this.wSets.gauntlet[1], gl.mats, 'gauntlet', .05, .8);
+    this._weaponGlow(this.wSets.glaive[0], gv.mats, 'glaive', 1.2, 1.5); this._weaponGlow(this.wSets.cannon[0], cn.mats, 'cannon', .25, 1);
+    const cfg = (list, grip, trail, tip) => list.forEach(g => Object.assign(g.userData, { grip, trail, tip }));
+    cfg(this.wSets.gauntlet, { arm: true, along: 0 }, [0, .16], [.05, .12]);
+    cfg(this.wSets.glaive, { lift: 1.2, lean: .35, along: .04 }, [.95, 1.35], [.9, 1.35]);
+    cfg(this.wSets.cannon, { arm: true, along: -.12 }, null, [.25, .25]);
+    this.meshyWeapons = true;
   }
 
   /** Replace the primitive weapons with the Meshy models (toon shaded, inked, glowing on summon). */
@@ -182,13 +257,13 @@ export class Player {
 
   _showWeapon(instant = true) {
     if (!this.wScale) this.wScale = {};
-    for (const id of ['claws', 'katana', 'hammer']) if (instant) this.wScale[id] = id === this.style ? 1 : 0;
+    for (const id of Object.keys(this.wSets)) if (instant) this.wScale[id] = id === this.style ? 1 : 0;
     this._weaponScale(0);
   }
 
   /** Weapons materialize/dematerialize with a slight overshoot instead of popping, and glow when summoned. */
   _weaponScale(dt) {
-    const sets = { claws: this.wClaws, katana: this.wKatana, hammer: this.wHammer };
+    const sets = this.wSets;
     this.swapGlow = Math.max(0, (this.swapGlow || 0) - dt);
     for (const [id, groups] of Object.entries(sets)) {
       const target = id === this.style ? 1 : 0;
@@ -452,7 +527,7 @@ export class Player {
     this.seq = ''; this.comboGrace = 0;
     const p = this.root.position; this.game.fx.dust(p.x, p.z, 8);
     if (this.airborne) this.playOnce('Rightward_Spin', .1, .7, .42, .05);
-    else if (this.sidestep && this.clips.Stand_Dodge_1) { if (this.style === 'katana' && this.clips.Sword_Parry) this.playOnce('Sword_Parry', .05, .45, .42, .04); else this.playOnce(Math.random() < .5 ? 'Stand_Dodge_1' : 'Stand_Dodge_2', .1, .5, .42, .04); }
+    else if (this.sidestep && this.clips.Stand_Dodge_1) { if ((this.style === 'katana' || this.style === 'glaive') && this.clips.Sword_Parry) this.playOnce('Sword_Parry', .05, .45, .42, .04); else this.playOnce(Math.random() < .5 ? 'Stand_Dodge_1' : 'Stand_Dodge_2', .1, .5, .42, .04); }
     else this.playOnce('Roll_Dodge', .12, .62, .42, .04);
     this.ghosts(4); this.burst(this.dodgeDir, 1);
     this.game.audio.dodge();
@@ -480,7 +555,7 @@ export class Player {
   }
 
   _swapFx(old, id) {
-    const g = this.game, sets = { claws: this.wClaws, katana: this.wKatana, hammer: this.wHammer };
+    const g = this.game, sets = this.wSets;
     const v = new V();
     this.swapGlow = .35;
     g.hitstop(.05); // ~3 frames of weight on every swap
@@ -513,7 +588,7 @@ export class Player {
     this.time += dt;
     for (const k of ['iframe', 'moonT', 'critT', 'swapBuff', 'comboGrace', 'counterT']) this[k] = Math.max(0, (this[k] || 0) - dt);
     if (this.dodgeCharge < st.dodges) this.dodgeCharge = Math.min(st.dodges, this.dodgeCharge + dt / 1.1);
-    this.energy = Math.min(100, this.energy + dt * 5);
+    this.energy = Math.min(100, this.energy + dt * 5 * (st.energyRegen || 1));
     for (const k in this.skillCd) this.skillCd[k] = Math.max(0, this.skillCd[k] - dt);
 
     let moving = false;
@@ -656,22 +731,20 @@ export class Player {
       const perp = ref.addScaledVector(f, -ref.dot(f)); if (perp.lengthSq() < 1e-4) perp.copy(up);
       return perp.normalize().multiplyScalar(Math.cos(lean)).addScaledVector(f, Math.sin(lean));
     };
-    place(this.wKatana[0], blade(1, .45), .04);
-    place(this.wHammer[0], blade(1.3, .3), .04);
-    for (const c of this.wClaws) place(c, f => f.clone(), -.05);
+    for (const list of Object.values(this.wSets)) for (const g of list) { const c = g.userData.grip; if (c) place(g, c.arm ? f => f.clone() : blade(c.lift, c.lean), c.along); }
   }
 
   /** Combo power 0..1 drives weapon glow, aura particles, trail size and hit effects. */
   _power(dt) {
     const g = this.game, target = g.combo > 1 ? Math.min(1, (g.rankIndex() + Math.min(1, g.combo / 120)) / 4.2) : 0;
     this.power = THREE.MathUtils.damp(this.power || 0, target, target > (this.power || 0) ? 4 : 1.5, dt);
-    const P = this.power, sets = { claws: this.wClaws, katana: this.wKatana, hammer: this.wHammer }, col = this.styleDef.color;
+    const P = this.power, sets = this.wSets, col = this.styleDef.color;
     for (const grp of sets[this.style]) {
       if (grp.userData.mats) for (const m of grp.userData.mats) m.emissiveIntensity = (m.userData.ei ?? .12) + P * .6 + this.swapGlow * 6;
       const glow = grp.userData.glow;
       if (glow && this.swapGlow <= 0) { glow.visible = P > .25; glow.material.opacity = (P - .25) * .35 * (.8 + .2 * Math.sin(this.time * 10)); glow.scale.setScalar(grp.userData.glowSize * (1 + P * .3)); }
       if (Math.random() < P * .45 * (dt * 60) * .5) {
-        const tip = grp.localToWorld(new V(0, grp === this.wKatana[0] ? .4 + Math.random() * .7 : grp === this.wHammer[0] ? .85 : .3, 0));
+        const tr = grp.userData.tip || [.3, .3], tip = grp.localToWorld(new V(0, tr[0] + Math.random() * (tr[1] - tr[0]), 0));
         g.fx.spark(tip.x, tip.y - g.ground(tip.x, tip.z), tip.z, (Math.random() - .5) * .8, .8 + Math.random() * 1.5, (Math.random() - .5) * .8, .45, .05 + P * .05, Math.random() < .3 ? 0xffffff : col, -1.5);
       }
       if (P > .9 && Math.random() < .012) {
@@ -684,10 +757,7 @@ export class Player {
   _trails(dt) {
     if (!this.trails) {
       const fx = this.game.scene;
-      const mk = (groups, base, tip) => groups.map(g => ({ g, base: new V(...base), tip: new V(...tip), t: new Trail(fx) }));
-      this.trails = this.meshyWeapons
-        ? { claws: mk(this.wClaws, [0, .14, 0], [0, .34, 0]), katana: mk(this.wKatana, [0, .3, 0], [0, 1.14, 0]), hammer: mk(this.wHammer, [0, .72, 0], [0, 1.02, 0]) }
-        : { claws: mk(this.wClaws, [0, .06, 0], [0, .34, 0]), katana: mk(this.wKatana, [0, .3, 0], [0, 1.23, 0]), hammer: mk(this.wHammer, [0, .66, 0], [0, 1.12, 0]) };
+      this.trails = Object.fromEntries(Object.entries(this.wSets).map(([style, groups]) => [style, groups.filter(g => g.userData.trail).map(g => ({ g, base: new V(0, g.userData.trail[0], 0), tip: new V(0, g.userData.trail[1], 0), t: new Trail(fx) }))]));
       this._tb = new V(); this._tt = new V();
     }
     this.root.updateMatrixWorld(true);
@@ -721,7 +791,7 @@ export class Player {
       this.playOnce('Hit_Reaction', 0, .35, .3, .04);
     }
     if (this.hp <= 0) {
-      if (st.revive > 0) { st.revive--; this.hp = st.maxHp * .5; this.iframe = 2; this.game.ui.announce('SEGUNDA LUA', 'Eddie se levanta'); this.game.shockwave(this.root.position.x, this.root.position.z, 6, 30, 0xb44dff, { knock: 10 }); return; }
+      if (st.revive > 0) { st.revive--; this.hp = st.maxHp * .5; this.iframe = 2; this.game.ui.announce(this.char.reviveName, `${this.char.short} se levanta`); this.game.shockwave(this.root.position.x, this.root.position.z, 6, 30, 0xb44dff, { knock: 10 }); return; }
       this.hp = 0; this.dead = true; this.state = 'dead';
       this.playOnce('Dead', 0, 1, 2.2, .1);
       this.game.onPlayerDeath();

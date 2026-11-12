@@ -139,3 +139,15 @@ button:disabled{opacity:.35;cursor:default}
 .cm code{min-width:120px}
 button:focus-visible,.card:focus{outline:2px solid #fff;outline-offset:3px}
 #vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,#05020c 120%)}
+
+/* character switch and the Tigress's skill tree */
+.charBtn{border-color:#ffffff40!important}
+#charLine{font-size:12px;opacity:.7;margin:-4px 0 6px 4px}
+.treeHead{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center;font-weight:900;letter-spacing:.08em;margin:6px 0}
+#treeGrid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:minmax(118px,auto);gap:10px}
+.node{border:1px solid var(--line);border-top:3px solid var(--c);padding:10px;background:#0006;display:flex;flex-direction:column;gap:5px}
+.node h4{margin:0;font-size:15px;color:var(--c)}.node p{margin:0;font-size:12.5px;opacity:.85;flex:1}.node small{font-size:11px;opacity:.6}
+.node button{padding:6px 12px;font-size:13px;align-self:flex-start}
+.node.owned{background:color-mix(in srgb,var(--c) 14%,#0008);box-shadow:0 0 14px color-mix(in srgb,var(--c) 40%,transparent)}
+.node.locked{opacity:.5}
+@media (max-width:900px){#treeGrid,.treeHead{grid-template-columns:1fr}#treeGrid .node{grid-column:auto!important;grid-row:auto!important}.treeHead{display:none}}

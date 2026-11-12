@@ -14,9 +14,33 @@ const SEQ = s => {
 export class UI {
   constructor(game) {
     this.g = game; this.cache = {};
-    this.screens = ['loading', 'title', 'how', 'shop', 'cards', 'pause', 'over', 'options'];
-    $('styles').innerHTML = STYLE_ORDER.map(id => `<div class="style" id="st_${id}" style="--c:${STYLES[id].css}"><small>${STYLES[id].key}</small>${STYLES[id].name}</div>`).join('');
+    this.screens = ['loading', 'title', 'how', 'shop', 'tree', 'cards', 'pause', 'over', 'options'];
+    this.renderStyles();
     document.querySelectorAll('.back').forEach(b => b.onclick = () => { game.audio.ui(); this.show('title'); });
+  }
+
+  renderStyles() { $('styles').innerHTML = STYLE_ORDER.map(id => `<div class="style" id="st_${id}" style="--c:${STYLES[id].css}"><small>${STYLES[id].key}</small>${STYLES[id].name}</div>`).join(''); }
+
+  /** title screen: the character switch and her skill tree button */
+  charInfo(C) {
+    $('btnChar').innerHTML = `Personagem: <b style="color:${C.css}">${C.name}</b> ⇄`;
+    $('charLine').textContent = `${C.title} · ${C.styles.map(s => STYLES[s].name).join(' · ')}`;
+    $('btnTree').classList.toggle('hide', C.id !== 'tigress');
+  }
+
+  /** the Tigress's skill tree: a core node, three weapon branches and a capstone */
+  tree(meta, TREE, onBuy) {
+    const T = meta.tree || {};
+    $('treeSouls').textContent = `◆ ${meta.souls} almas`;
+    $('treeGrid').innerHTML = TREE.map(n => {
+      const owned = !!T[n.id], open = n.req.every(r => T[r]), afford = meta.souls >= n.cost;
+      const col = n.col === 0 ? 'gauntlet' : n.col === 2 ? 'cannon' : n.row === 0 || n.row === 4 ? null : 'glaive';
+      const c = col ? STYLES[col].css : '#e9e3ff';
+      const req = n.req.length && !open ? `<small>Requer: ${n.req.map(r => TREE.find(x => x.id === r).name).join(', ')}</small>` : '';
+      return `<div class="node ${owned ? 'owned' : open ? 'open' : 'locked'}" style="grid-column:${n.col + 1};grid-row:${n.row + 1};--c:${c}"><h4>${n.name}</h4><p>${n.desc}</p>${req}<button data-id="${n.id}" ${owned || !open || !afford ? 'disabled' : ''}>${owned ? 'Instalado' : `◆ ${n.cost}`}</button></div>`;
+    }).join('');
+    $('treeGrid').querySelectorAll('button').forEach(b => b.onclick = () => onBuy(b.dataset.id));
+    this.show('tree');
   }
 
   show(id) {
@@ -41,12 +65,12 @@ export class UI {
       const cd = p.skillCd[s.id] || 0, off = cd > 0 || p.energy < s.cost;
       return `<div class="sk${off ? ' off' : ''}"><div class="cd" style="width:${Math.min(100, cd / s.cd * 100)}%"></div><b>${keys[i]}</b>${s.name}<i>${s.cost}</i></div>`;
     }).join(''));
-    this._set('furyText', 'text', p.fury >= 100 ? 'F  ·  LUA CHEIA PRONTA' : `FÚRIA ${p.fury | 0}%`);
+    this._set('furyText', 'text', p.fury >= 100 ? `F  ·  ${p.char.ult} PRONTA` : `FÚRIA ${p.fury | 0}%`);
     $('furyFill').parentElement.classList.toggle('ready', p.fury >= 100);
     let pips = '';
     for (let i = 0; i < st.dodges; i++) pips += `<div class="pip"><i style="width:${Math.min(1, Math.max(0, p.dodgeCharge - i)) * 100}%"></i></div>`;
     this._set('dodges', 'html', pips);
-    const buffs = [p.moonT > 0 && `☾ Lua Cheia ${p.moonT.toFixed(1)}s`, p.swapBuff > 0 && 'Troca Selvagem', p.critT > 0 && 'Instinto'].filter(Boolean).join(' · ');
+    const buffs = [p.moonT > 0 && `☾ ${p.char.ult} ${p.moonT.toFixed(1)}s`, p.swapBuff > 0 && 'Troca Selvagem', p.critT > 0 && 'Instinto'].filter(Boolean).join(' · ');
     this._set('buffs', 'text', buffs);
     this._set('waveLabel', 'text', g.waveText());
     this._set('souls', 'text', `◆ ${g.runSouls | 0}`);

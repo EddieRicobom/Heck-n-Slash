@@ -22,7 +22,7 @@ const glowTex = () => GLOW || (GLOW = (() => {
 const sprite = (color, size) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); s.scale.setScalar(size); return s; };
 
 /** A one-shot timeline: events fire once when their time is reached; tick runs every frame. */
-function timeline(events, tick, dur) {
+export function timeline(events, tick, dur) {
   let t = 0, i = 0;
   events.sort((a, b) => a[0] - b[0]);
   return { update(dt) { t += dt; tick?.(t, dt); while (i < events.length && t >= events[i][0]) events[i++][1](t); return t >= dur; } };
@@ -36,7 +36,8 @@ export class Skills {
   clear() { for (const e of this.effects) e.dispose?.(); this.effects = []; }
 
   near(pos, r, list = this.g.enemies.list) { return list.filter(e => e.alive && e.state !== 'spawn' && Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z) < r + e.r); }
-  hit(e, dmg, o = {}) { const p = this.g.player; return this.g.damageEnemy(e, dmg, { color: STYLES[p.style].color, style: p.style, fromMove: true, heavy: true, dir: Math.atan2(e.pos.x - p.root.position.x, e.pos.z - p.root.position.z), ...o }); }
+  pow() { return this.g.stats.skillPow?.[this.g.player.style] || 1; }
+  hit(e, dmg, o = {}) { const p = this.g.player; dmg *= this.pow(); return this.g.damageEnemy(e, dmg, { color: STYLES[p.style].color, style: p.style, fromMove: true, heavy: true, dir: Math.atan2(e.pos.x - p.root.position.x, e.pos.z - p.root.position.z), ...o }); }
   ahead(dist) { const p = this.g.player; return new V(p.root.position.x + Math.sin(p.facing) * dist, 0, p.root.position.z + Math.cos(p.facing) * dist); }
   target(range = 12) {
     const p = this.g.player, pp = p.root.position;
@@ -252,11 +253,12 @@ export class Skills {
 
   // ---- Ultimate: cinematic Full Moon ------------------------------------------------------------------------
   ultimate() {
-    const g = this.g, p = g.player, style = p.style, col = STYLES[style].color, home = p.root.position.clone();
+    const g = this.g, p = g.player, style = p.style, col = STYLES[style].color, home = p.root.position.clone(), S = STYLES[style], up = g.stats.ultPow || 1, orbital = p.char.id !== 'eddie';
     const targets = this.near(home, 18).sort((a, b) => a.pos.distanceTo(home) - b.pos.distanceTo(home)).slice(0, 8);
     const f0 = p.facing, gy0 = this.gy(home.x, home.z);
     p.fury = 0; p.iframe = 4;
-    const moon = sprite(0xf0e6ff, 1); const moonCore = sprite(col, .6); moon.add(moonCore);
+    const moon = sprite(orbital ? col : 0xf0e6ff, 1); const moonCore = sprite(orbital ? 0xffffff : col, .6); moon.add(moonCore);
+    const column = orbital ? new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 80, 20, 1, true).translate(0, 40, 0), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide })) : null;
     g.startCine({
       dur: 3.1, letterbox: true, freeze: true,
       cam: t => {
@@ -269,7 +271,7 @@ export class Skills {
       },
     });
     p.playOnce('Chest_Pound_Taunt', .12, .55, .95, .1);
-    g.ui.bossCard('LUA CHEIA', ULTS[style], STYLES[style].css);
+    g.ui.bossCard(p.char.ult, ULTS[style], STYLES[style].css);
     g.audio.fury();
     const ev = [
       [.05, () => { g.fx.ring(home.x, home.z, 4, col, .6); for (let i = 0; i < 50; i++) g.fx.spark(home.x + (Math.random() - .5) * 2, Math.random() * .5, home.z + (Math.random() - .5) * 2, (Math.random() - .5) * 2, 5 + Math.random() * 6, (Math.random() - .5) * 2, 1, .12, Math.random() < .4 ? 0xffffff : col, -1); }],
@@ -281,25 +283,26 @@ export class Skills {
       const a = Math.random() * 6.28, np = new V(e.pos.x + Math.sin(a) * 1.5, 0, e.pos.z + Math.cos(a) * 1.5);
       g.fx.bolt(new V(prev.x, 1.2, prev.z), new V(np.x, 1.2, np.z), 0xffffff); prev = np;
       p.root.position.copy(np); this.face(e); p.ghosts(2);
-      p.playOnce(style === 'hammer' ? 'Heavy_Hammer_Swing' : style === 'katana' ? 'Right_Hand_Sword_Slash' : 'Lunge_Spin_Kick', style === 'hammer' ? .55 : style === 'katana' ? .3 : .55, style === 'hammer' ? .75 : style === 'katana' ? .45 : .7, .12, .02);
+      p.playOnce(S.ultHit[0], S.ultHit[1], S.ultHit[2], .12, .02);
       g.fx.slash(new V(e.pos.x, 1.2 + e.y, e.pos.z), Math.random() * 6.28, 2.6, 2.4, (Math.random() - .5) * 2.4, 1, Math.random() < .5 ? 0xffffff : col, .2);
-      this.hit(e, 25, { knock: 0, heavy: false }); g.audio.hit(true, style);
+      this.hit(e, 25 * up, { knock: 0, heavy: false }); g.audio.hit(true, style);
     }]));
     ev.push([2.05, () => {
       p.root.position.copy(home); this.face(targets[0]);
-      p.playOnce(style === 'katana' ? 'Charged_Upward_Slash' : 'Charged_Ground_Slam', style === 'katana' ? .2 : .3, style === 'katana' ? .5 : .75, 1, .1);
-      moon.position.set(home.x, gy0 + 40, home.z); moon.scale.setScalar(26); g.scene.add(moon);
+      p.playOnce(S.ultFin[0], S.ultFin[1], S.ultFin[2], 1, .1);
+      moon.position.set(home.x, gy0 + 40, home.z); moon.scale.setScalar(orbital ? 14 : 26); g.scene.add(moon);
+      if (column) { column.position.set(home.x, gy0, home.z); g.scene.add(column); }
       g.audio.bossRoar();
     }]);
     ev.push([2.62, () => {
-      for (const e of this.near(home, 14)) this.hit(e, 120, { launch: 12, knock: 12, stun: 1.5, slam: true });
+      for (const e of this.near(home, 14)) this.hit(e, 120 * up, { launch: 12, knock: 12, stun: 1.5, slam: true });
       for (const r of [5, 9, 14]) g.fx.ring(home.x, home.z, r, r === 9 ? 0xffffff : col, .6);
       g.fx.burst(home.x, 1, home.z, 120, col, 18, .18, .9); g.fx.scorch(home.x, home.z, 6);
       g.impactFrame(new V(home.x, 1, home.z), .1); g.aberr(1); g.shake(1); g.audio.explode(); g.input.rumble(1, 1, 500); g.flash('#ffffff');
-      g.scene.remove(moon); p.moonT = 9;
+      g.scene.remove(moon); if (column) g.scene.remove(column); p.moonT = 9;
     }]);
     return timeline(ev, t => {
-      if (t > 2.05 && t < 2.62) { const k = (t - 2.05) / .57; moon.position.y = gy0 + 40 - k * k * 40; moon.material.rotation += .05; }
+      if (t > 2.05 && t < 2.62) { const k = (t - 2.05) / .57; moon.position.y = gy0 + 40 - k * k * 40; moon.material.rotation += .05; if (column) { column.material.opacity = .15 + k * .55; column.scale.set(1.4 - k, 1, 1.4 - k); } }
     }, 3.1);
   }
 }
