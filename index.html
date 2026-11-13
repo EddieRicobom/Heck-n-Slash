@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eddie Wolfunny: Presas da Noite</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/build/three.module.min.js",
+  "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="vignette"></div>
+<div id="dmgLayer"></div>
+<div id="flash"></div>
+<div id="whiteFlash"></div>
+<div id="lbTop"></div><div id="lbBot"></div>
+<div id="bossCard"><div class="bcStripe"></div><div class="bcName"></div><div class="bcSub"></div></div>
+
+<div id="hud" class="hide">
+  <div id="topLeft">
+    <div id="charBadge"><b id="cbName"></b><span id="cbStyle"></span></div>
+    <div class="bar"><div id="hpGhost"></div><div id="hpFill"></div><span id="hpText"></span></div>
+    <div class="bar fury"><div id="furyFill"></div><span id="furyText"></span></div>
+    <div class="bar energy"><div id="enFill"></div><span id="enText"></span></div>
+    <div id="dodges"></div>
+    <div id="buffs"></div>
+  </div>
+  <div id="topCenter">
+    <div id="waveLabel"></div>
+    <div id="bossWrap" class="hide"><div id="bossName"></div><div class="bar boss"><div id="bossFill"></div></div><div class="bar poise"><div id="poiseFill"></div></div></div>
+  </div>
+  <div id="topRight"><div id="souls"></div><div id="rank"><div id="rankName"></div><div id="comboNum"></div><div class="rankbar"><div id="rankFill"></div></div></div></div>
+  <div id="bottom">
+    <div id="skillBar"></div>
+    <div id="styles"></div>
+    <div id="nextMoves"></div>
+  </div>
+  <div id="trainPanel" class="hide">
+    <div class="tpTitle">TREINO</div>
+    <div class="tpRow"><span>DPS (5 s)</span><b id="tpDps">0</b></div>
+    <div class="tpRow"><span>Pico de DPS</span><b id="tpPeak">0</b></div>
+    <div class="tpRow"><span>Dano total</span><b id="tpTotal">0</b></div>
+    <div class="tpRow"><span>Maior golpe</span><b id="tpMax">0</b></div>
+    <div class="tpRow"><span>Tempo</span><b id="tpTime">0 s</b></div>
+    <div class="tpHint">Backspace zera · T adiciona boneco · fúria infinita · todos os combos liberados</div>
+  </div>
+  <canvas id="minimap" class="hide" width="210" height="210"></canvas>
+  <div id="moveName"></div>
+  <div id="announce"></div>
+  <div id="milestone"></div>
+</div>
+
+<div id="loading" class="screen"><h2>Afiando as garras…</h2><div id="loadErr"></div></div>
+
+<div id="title" class="screen hide">
+  <div class="titleBox">
+    <h1 id="titleName">EDDIE WOLFUNNY</h1>
+    <h3>Presas da Noite</h3>
+    <div class="menu">
+      <button id="btnChar" class="charBtn">Personagem</button>
+      <div id="charLine"></div>
+      <button id="btnWorld">Explorar o Mundo</button>
+      <button id="btnPlay">Arena</button>
+      <button id="btnTrain">Treino</button>
+      <button id="btnShop">Altar das Almas</button>
+      <button id="btnTree" class="hide">Árvore de Titânio</button>
+      <button id="btnOpts">Opções</button>
+      <button id="btnHow">Como jogar</button>
+    </div>
+    <div id="bestLine"></div>
+  </div>
+</div>
+
+<div id="options" class="screen hide"><div class="panel wide">
+  <h2>Opções</h2>
+  <div class="optGrid">
+    <label>Volume geral<input type="range" id="optMaster" min="0" max="1" step=".05"></label>
+    <label>Música<input type="range" id="optMusic" min="0" max="1.4" step=".05"></label>
+    <label>Efeitos sonoros<input type="range" id="optSfx" min="0" max="1.4" step=".05"></label>
+    <label>Distância da câmera<input type="range" id="optCam" min=".7" max="1.5" step=".05"></label>
+    <label>Giro da câmera (controle)<input type="range" id="optSens" min=".4" max="2.2" step=".1"></label>
+    <label>Tremor de tela<input type="range" id="optShake" min="0" max="1.5" step=".1"></label>
+    <label>Qualidade gráfica<select id="optQuality"><option value="auto">Automática</option><option value="3">Alta</option><option value="2">Média</option><option value="1">Baixa</option><option value="0">Mínima</option></select></label>
+  </div>
+  <h3 style="margin:18px 0 8px">Teclas</h3>
+  <div id="keyList"></div>
+  <div class="menu row"><button id="btnKeysReset">Restaurar padrão</button><button id="btnOptsBack">Voltar</button></div>
+</div></div>
+<div id="how" class="screen hide"><div class="panel">
+  <h2>Como jogar</h2>
+  <div class="howGrid">
+    <b>WASD</b><span>Mover</span>
+    <b>Mouse</b><span>Mirar</span>
+    <b>Botão esquerdo (E)</b><span>Ataque leve</span>
+    <b>Botão direito (D)</b><span>Ataque pesado</span>
+    <b>Espaço</b><span>Pular (duas vezes para pulo duplo). Ataques no ar mantêm a personagem flutuando</span>
+    <b>Shift</b><span>Esquiva (cancela ataques; desviar no último instante ativa o contra-ataque)</span>
+    <b>1 2 3 / Q</b><span>Trocar de estilo (trocar logo após um acerto dá dano bônus)</span>
+    <b>E / R</b><span>Técnicas do estilo (gastam energia, a barra azul)</span>
+    <b>F</b><span>Lua Cheia cinematográfica, com a barra de fúria cheia</span>
+    <b>Esc</b><span>Pausar e ver a lista de combos</span>
+    <b>M / G</b><span>Som / efeitos gráficos</span>
+  </div>
+  <h3 style="margin:18px 0 8px">Controle</h3>
+  <div class="howGrid">
+    <b>Analógico esquerdo / direito</b><span>Mover / mirar</span>
+    <b>X / Y</b><span>Ataque leve / pesado</span>
+    <b>A</b><span>Pular</span>
+    <b>B</b><span>Esquiva</span>
+    <b>RB / LB · D-pad ← ↑ →</b><span>Próximo/anterior estilo · Garras, Katana, Martelo</span>
+    <b>LT / LB</b><span>Técnicas do estilo</span>
+    <b>RT</b><span>Lua Cheia</span>
+    <b>Start</b><span>Pausa e lista de combos</span>
+  </div>
+  <h3 style="margin:18px 0 8px">Técnicas</h3>
+  <p style="margin:0">· <b>Pausa no combo</b>: espere um instante entre os toques (ex.: E E · E) para um golpe alternativo.<br>
+  · <b>Ataque da esquiva</b>: ataque durante ou logo após a esquiva. Depois de uma <b>esquiva perfeita</b> ele vira um contra-ataque com dano dobrado.<br>
+  · <b>Golpe de troca</b>: troque de estilo logo após acertar para disparar o ataque de entrada do novo estilo.<br>
+  · <b>Malabarismo</b>: lançadores jogam inimigos para cima. Pule logo depois para persegui-los, e encadeie E E E no ar para mantê-los suspensos. D no ar é um mergulho que esmaga.</p>
+  <p>Encadeie E e D para formar combos. Mantenha o contador alto para subir de patente: patentes altas dão mais dano e mais almas.</p>
+  <button class="back">Voltar</button>
+</div></div>
+
+<div id="shop" class="screen hide"><div class="panel wide">
+  <h2>Altar das Almas</h2>
+  <div id="shopSouls"></div>
+  <div id="shopList"></div>
+  <button class="back">Voltar</button>
+</div></div>
+
+<div id="tree" class="screen hide"><div class="panel wide">
+  <h2>Árvore de Titânio</h2>
+  <div id="treeSouls"></div>
+  <div class="treeHead"><span style="color:#3dff8a">Manoplas</span><span style="color:#ff8a2a">Glaive</span><span style="color:#7fe9ff">Canhão</span></div>
+  <div id="treeGrid"></div>
+  <button class="back">Voltar</button>
+</div></div>
+
+<div id="cards" class="screen hide">
+  <h2 id="cardsTitle">Escolha uma bênção</h2>
+  <div id="cardRow"></div>
+  <button id="btnReroll"></button>
+</div>
+
+<div id="pause" class="screen hide"><div class="panel wide">
+  <h2>Pausa</h2>
+  <div id="comboList"></div>
+  <div id="runUpgrades"></div>
+  <div class="menu row">
+    <button id="btnResume">Continuar</button>
+    <button id="btnPauseOpts">Opções</button>
+    <button id="btnQuit">Desistir</button>
+  </div>
+</div></div>
+
+<div id="over" class="screen hide"><div class="panel">
+  <div id="overGrade"></div>
+  <h2 id="overTitle">A noite venceu</h2>
+  <div id="overSub"></div>
+  <div id="overStats"></div>
+  <div class="menu row">
+    <button id="btnAgain">Caçar de novo</button>
+    <button id="btnEndless" class="hide">Continuar (modo infinito)</button>
+    <button id="btnMenu">Menu</button>
+  </div>
+</div></div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
